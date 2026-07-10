@@ -46,9 +46,9 @@ Agora que o app está aberto nos **dois** aparelhos, e os dois na **mesma Wi-Fi*
 2. Aparece um **código de 6 números** nos **dois** aparelhos. Confira que é **o mesmo**.
 3. Toque/clique em **Confirmar** nos dois. Fica **Conectado ✓** — e um **cadeado verde 🔒** aparece nos dois lados (no telefone, *"Comunicação criptografada"*; no menu do Mac, junto ao nome do telefone), confirmando que a conexão está criptografada.
 
-A tela do telefone é assim — **antes** de escolher (à esquerda) e **depois de conectado** (à direita):
+A tela do telefone **conectada** fica assim (cadeado verde + Conectado ✓):
 
-![Telas do RD2Mac no telefone](img/android-antes-depois.png)
+<p align="center"><img src="img/android-conectado.png" width="360" alt="Tela do RD2Mac conectado"></p>
 
 > 💡 Depois de pareado, ele **lembra para sempre** — só muda se você mandar *Esquecer* e escolher outro.
 
@@ -117,9 +117,9 @@ With the app open on **both** devices, both on the **same Wi-Fi**:
 2. A **6-digit code** shows on **both** devices. Check it's **the same**.
 3. Tap/click **Confirm** on both. It shows **Connected ✓** — and a **green padlock 🔒** appears on both sides (on the phone, *"Communication is encrypted"*; in the Mac menu, next to the phone's name), confirming the connection is encrypted.
 
-The phone screen looks like this — **before** choosing (left) and **once connected** (right):
+The phone screen **once connected** looks like this (green padlock + Connected ✓):
 
-![RD2Mac screens on the phone](img/android-antes-depois.png)
+<p align="center"><img src="img/android-conectado.png" width="360" alt="RD2Mac connected screen"></p>
 
 > 💡 Once paired, it's remembered **for good** — it only changes if you **Forget** and pick another.
 
