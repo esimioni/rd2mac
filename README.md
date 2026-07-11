@@ -23,7 +23,7 @@ São **dois aplicativos**: um no Mac e um no telefone. Instale **os dois primeir
 
 ### 💻 Parte 1 — Instalar no Mac
 
-1. Baixe o app: **[⬇️ RD2Mac.dmg](https://github.com/esimioni/rd2mac/releases/download/v0.2/RD2Mac.dmg)**.
+1. Baixe o app: **[⬇️ RD2Mac.dmg](https://github.com/esimioni/rd2mac/releases/download/v0.3/RD2Mac.dmg)**.
 2. Dê um **duplo clique** no **RD2Mac.dmg** — abre uma janelinha. **Arraste** o ícone do RD2Mac para cima da pasta **Aplicativos**.
 3. Abra a pasta **Aplicativos** e dê um **duplo clique** no **RD2Mac** para abrir.
 4. Na **primeira vez**, o Mac pode perguntar se o RD2Mac pode encontrar aparelhos na **rede local** — clique em **Permitir** (sem isso ele não acha o telefone).
@@ -33,7 +33,7 @@ Ainda **não pareie** agora — primeiro instale no telefone (Parte 2).
 
 ### 📱 Parte 2 — Instalar no telefone (Android)
 
-1. No telefone, baixe o app: **[⬇️ RD2Mac.apk](https://github.com/esimioni/rd2mac/releases/download/v0.2/RD2Mac.apk)**. Depois abra o arquivo baixado (na barra de notificações ou na pasta **Downloads**).
+1. No telefone, baixe o app: **[⬇️ RD2Mac.apk](https://github.com/esimioni/rd2mac/releases/download/v0.3/RD2Mac.apk)**. Depois abra o arquivo baixado (na barra de notificações ou na pasta **Downloads**).
 2. O Android vai avisar que precisa de permissão para **instalar apps desta origem** — toque em **Configurações**, ligue **Permitir desta fonte** e volte.
 3. Pode aparecer um aviso de segurança (Play Protect): toque em **Instalar mesmo assim**. O app é seguro — ele só não veio da loja Google Play.
 4. Abra o **RD2Mac** e toque em **Permitir** quando ele pedir acesso a **fotos** e **notificações**.
@@ -71,6 +71,18 @@ Dá para copiar num aparelho e colar no outro, parecido com o Handoff da Apple.
   No dia a dia: **copie** algo, desça a barra e **toque em "Enviar p/ Mac"** — pronto, já dá para colar no Mac. (No Mac, deixe ligado **"Receber área de transferência do telefone"** no menu.)
 - **Só com o Mac por perto (opcional):** ligue **"Somente com o Mac por perto"** no app do telefone para o recebimento automático pausar sozinho quando você se afastar (escolha o alcance: **Mesma mesa**, **Mesma sala** ou **Mesma casa**). O telefone detecta o Mac por Bluetooth, e o menu do Mac mostra **"Telefone por perto / longe"**. O atalho "Enviar p/ Mac" continua funcionando sempre, perto ou longe.
 
+#### 🤖 Puxar arquivos com um assistente de IA (opcional, avançado)
+
+Se você usa um **assistente de IA com acesso ao terminal** do computador (como o **Claude Code**), pode pedir coisas como *"puxe os últimos 3 prints do meu telefone"* — sem tocar no aparelho. Ele busca os arquivos e já os lê para você.
+
+1. **Ative a ferramenta:** clique no ícone do RD2Mac na barra do topo do Mac → **Install command-line tool…** (pode pedir sua senha uma vez).
+2. **Ensine seu assistente:** cole o texto abaixo nas instruções dele (por exemplo, no arquivo `CLAUDE.md`). Sem isso, ele não sabe que a ferramenta existe.
+
+> Este Mac tem o comando `rd2mac`, que move arquivos entre o Mac e meu telefone pela Wi-Fi (o app RD2Mac precisa estar aberto, o telefone pareado, os dois na mesma Wi-Fi). Use quando eu pedir para puxar do ou enviar para o telefone:
+> - `rd2mac pull-screenshot [n]` — salva meus **n** prints mais recentes em ~/Downloads e imprime o caminho de cada um; abra esses arquivos para vê-los.
+> - `rd2mac pull [image|video] [n]` — o mesmo, para as **n** fotos ou vídeos mais recentes da galeria.
+> - `rd2mac send <arquivo>…` — envia arquivo(s) do Mac para o telefone (fotos e vídeos vão para a galeria; o resto, para Downloads).
+
 ### ❓ Se algo não funcionar
 
 - **O telefone (ou o Mac) não aparece na lista?** Confirme que os dois estão na **mesma rede Wi-Fi**.
@@ -94,7 +106,7 @@ There are **two apps**: one on the Mac, one on the phone. Install **both first**
 
 ### 💻 Part 1 — Install on the Mac
 
-1. Download the app: **[⬇️ RD2Mac.dmg](https://github.com/esimioni/rd2mac/releases/download/v0.2/RD2Mac.dmg)**.
+1. Download the app: **[⬇️ RD2Mac.dmg](https://github.com/esimioni/rd2mac/releases/download/v0.3/RD2Mac.dmg)**.
 2. **Double-click** **RD2Mac.dmg** — a window opens. **Drag** the RD2Mac icon onto the **Applications** folder.
 3. Open **Applications** and **double-click** **RD2Mac**.
 4. The **first time**, the Mac may ask if RD2Mac can find devices on the **local network** — click **Allow** (otherwise it won't find the phone).
@@ -104,7 +116,7 @@ Don't pair yet — install on the phone first (Part 2).
 
 ### 📱 Part 2 — Install on the phone (Android)
 
-1. On the phone, download the app: **[⬇️ RD2Mac.apk](https://github.com/esimioni/rd2mac/releases/download/v0.2/RD2Mac.apk)**. Then open the downloaded file (from the notification shade or the **Downloads** folder).
+1. On the phone, download the app: **[⬇️ RD2Mac.apk](https://github.com/esimioni/rd2mac/releases/download/v0.3/RD2Mac.apk)**. Then open the downloaded file (from the notification shade or the **Downloads** folder).
 2. Android will ask for permission to **install apps from this source** — tap **Settings**, turn on **Allow from this source**, and go back.
 3. A Play Protect warning may appear: tap **Install anyway**. The app is safe — it just didn't come from the Google Play store.
 4. Open **RD2Mac** and tap **Allow** for **photos** and **notifications**.
@@ -141,6 +153,18 @@ Copy on one device, paste on the other — like Apple's Handoff.
 
   Day to day: **copy** something, swipe down and **tap "Send to Mac"** — ready to paste on the Mac. (On the Mac, keep **"Receive clipboard from phone"** enabled in the menu.)
 - **Only when the Mac is nearby (optional):** turn on **"Only when the Mac is nearby"** in the phone app so automatic receiving pauses by itself when you walk away (pick the range: **Same desk**, **Same room** or **Same house**). The phone detects the Mac over Bluetooth, and the Mac's menu shows **"Phone nearby / away"**. The "Send to Mac" tile always works, near or far.
+
+#### 🤖 Pull files with an AI assistant (optional, advanced)
+
+If you use an **AI assistant with terminal access** on your computer (like **Claude Code**), you can ask things like *"pull my last 3 phone screenshots"* — without touching the phone. It fetches the files and reads them for you.
+
+1. **Enable the tool:** click the RD2Mac icon in the Mac's top menu bar → **Install command-line tool…** (may ask for your password once).
+2. **Teach your assistant:** paste the text below into its instructions (for example, a `CLAUDE.md` file). Without this, it doesn't know the tool exists.
+
+> This Mac has an `rd2mac` command that moves files between the Mac and my phone over Wi-Fi (the RD2Mac app must be running, the phone paired, both on the same Wi-Fi). Use it when I ask to pull from or send to my phone:
+> - `rd2mac pull-screenshot [n]` — save my **n** latest screenshots to ~/Downloads and print each path; open those files to see them.
+> - `rd2mac pull [image|video] [n]` — same, for the **n** latest gallery photos or videos.
+> - `rd2mac send <file>…` — send file(s) from the Mac to my phone (photos and videos go to the gallery, everything else to Downloads).
 
 ### ❓ If something doesn't work
 
