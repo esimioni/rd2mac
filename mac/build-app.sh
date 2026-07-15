@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Build RD2Mac in release, assemble + ad-hoc sign the .app (with the `rd2mac` CLI
+# embedded in the bundle), install to /Applications, copy the CLI to ~/bin
+# for local dev, and install a LaunchAgent that starts it at login (KeepAlive only on
+# crash, so the menu's Quit still works). Re-run any time after changing the Mac source.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+APP_NAME="RD2Mac"
+LABEL="net.simioni.rd2mac"
+DEST_APP="/Applications/${APP_NAME}.app"
+EXEC="${DEST_APP}/Contents/MacOS/${APP_NAME}"
+CLI_DEST="$HOME/bin/rd2mac"
+AGENT="$HOME/Library/LaunchAgents/${LABEL}.plist"
+DOMAIN="gui/$(id -u)"
+
+# Distribution mode: `build-app.sh --release` signs with a Developer ID +
+# hardened runtime and notarizes, producing a clean-opening app for other Macs.
+# Without the flag the build stays ad-hoc signed (fine for local use, no network
+# or Apple credentials needed).
+RELEASE=0
+[ "${1:-}" = "--release" ] && RELEASE=1
+NOTARY_PROFILE="rd2mac-notary"       # created once via `notarytool store-credentials`
+DIST_ZIP="$HOME/Desktop/RD2Mac.zip"
+
+echo "▶ Building release…"
+swift build -c release --package-path "$HERE"
+BIN_DIR="$HERE/.build/release"
+
+echo "▶ Assembling ${APP_NAME}.app…"
+STAGE="$HERE/.build/${APP_NAME}.app"
+rm -rf "$STAGE"
+mkdir -p "$STAGE/Contents/MacOS"
+cp "$BIN_DIR/${APP_NAME}App" "$STAGE/Contents/MacOS/${APP_NAME}"
+cp "$HERE/Resources/Info.plist" "$STAGE/Contents/Info.plist"
+mkdir -p "$STAGE/Contents/Resources"
+cp "$HERE/Resources/AppIcon.icns" "$STAGE/Contents/Resources/AppIcon.icns"
+cp -R "$HERE/Resources/en.lproj" "$STAGE/Contents/Resources/"
+cp -R "$HERE/Resources/pt-BR.lproj" "$STAGE/Contents/Resources/"
+
+echo "▶ Embedding the rd2mac CLI in the bundle…"
+# Ships inside the .app so a plain DMG install carries it; the app's
+# "Install command-line tool" menu symlinks it onto the user's PATH. Signed
+# inside-out below, so it inherits Developer ID + notarization.
+# MUST live in Contents/Helpers, NOT Contents/MacOS: the volume is case-insensitive,
+# so a MacOS/rd2mac collides with the app's own MacOS/RD2Mac and overwrites it —
+# launchd would then run the CLI (exit 2) instead of the menu-bar app.
+mkdir -p "$STAGE/Contents/Helpers"
+cp "$BIN_DIR/rd2mac" "$STAGE/Contents/Helpers/rd2mac"
+
+echo "▶ Building + embedding Share Extension…"
+SE_SRC="$HERE/ShareExtension"
+APPEX="$STAGE/Contents/PlugIns/ShareExtension.appex"
+mkdir -p "$APPEX/Contents/MacOS"
+SDK="$(xcrun --sdk macosx --show-sdk-path)"
+swiftc -sdk "$SDK" -target arm64-apple-macos13.0 -module-name ShareExtension \
+    -O -emit-executable -o "$APPEX/Contents/MacOS/ShareExtension" \
+    -Xlinker -e -Xlinker _NSExtensionMain \
+    "$SE_SRC/ShareController.swift"
+cp "$SE_SRC/Info.plist" "$APPEX/Contents/Info.plist"
+
+if [ "$RELEASE" -eq 1 ]; then
+    echo "▶ Signing for distribution (Developer ID + hardened runtime)…"
+    SIGN_ID="$(security find-identity -v -p codesigning \
+        | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+    if [ -z "${SIGN_ID:-}" ]; then
+        echo "✗ No 'Developer ID Application' certificate found in the keychain." >&2
+        echo "  Create it: Xcode → Settings → Accounts → Manage Certificates →" >&2
+        echo "  + → Developer ID Application. Then re-run with --release." >&2
+        exit 1
+    fi
+    echo "  identity: $SIGN_ID"
+    # Sign inside-out: nested Mach-Os (sandboxed extension keeps its entitlements;
+    # embedded CLI) first, then the app.
+    codesign --force --options runtime --timestamp \
+        --entitlements "$SE_SRC/ShareExtension.entitlements" --sign "$SIGN_ID" "$APPEX"
+    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$STAGE/Contents/Helpers/rd2mac"
+    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$STAGE"
+
+    echo "▶ Notarizing (uploading to Apple, waits for the verdict)…"
+    NOTARIZE_ZIP="$HERE/.build/RD2Mac-notarize.zip"
+    ditto -c -k --keepParent "$STAGE" "$NOTARIZE_ZIP"
+    xcrun notarytool submit "$NOTARIZE_ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+
+    echo "▶ Stapling the notarization ticket to the app…"
+    xcrun stapler staple "$STAGE"
+
+    echo "▶ Writing distributable → ${DIST_ZIP}…"
+    mkdir -p "$(dirname "$DIST_ZIP")"
+    rm -f "$DIST_ZIP"
+    ditto -c -k --keepParent "$STAGE" "$DIST_ZIP"
+else
+    echo "▶ Ad-hoc signing (nested Mach-Os first, then app)…"
+    codesign --force --sign - --entitlements "$SE_SRC/ShareExtension.entitlements" "$APPEX"
+    codesign --force --sign - "$STAGE/Contents/Helpers/rd2mac"
+    codesign --force --sign - "$STAGE"
+fi
+
+echo "▶ Stopping any running instance…"
+launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+osascript -e "quit app \"$APP_NAME\"" 2>/dev/null || true
+pkill -x "$APP_NAME" 2>/dev/null || true
+sleep 1
+
+echo "▶ Installing to ${DEST_APP}…"
+rm -rf "$DEST_APP"
+cp -R "$STAGE" "$DEST_APP"
+
+echo "▶ Registering with Launch Services (so the Share Extension is discovered)…"
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+"$LSREGISTER" -f "$DEST_APP" 2>/dev/null || true
+
+echo "▶ Installing CLI → ${CLI_DEST}…"
+mkdir -p "$(dirname "$CLI_DEST")"
+cp "$BIN_DIR/rd2mac" "$CLI_DEST"
+
+echo "▶ Installing login LaunchAgent…"
+mkdir -p "$(dirname "$AGENT")"
+cat > "$AGENT" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${EXEC}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>
+PLIST
+
+echo "▶ Loading LaunchAgent (starts the app now + at login)…"
+launchctl bootstrap "$DOMAIN" "$AGENT" 2>/dev/null || launchctl load "$AGENT" 2>/dev/null || true
+
+echo "✓ Done. RD2Mac is running and will start at login."
+[ "$RELEASE" -eq 1 ] && echo "  Distributable (notarized + stapled): $DIST_ZIP — send this to family/friends."
+echo "  CLI: $CLI_DEST  (ensure ~/bin is on PATH)"
+echo "  First run may prompt for Local Network — allow it, or enable RD2Mac"
+echo "  under System Settings → Privacy & Security → Local Network."
+echo "  Share menu: if RD2Mac doesn't appear, enable it under"
+echo "  System Settings → General → Login Items & Extensions → Sharing."

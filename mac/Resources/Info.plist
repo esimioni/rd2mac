@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>RD2Mac</string>
+    <key>CFBundleDisplayName</key>
+    <string>RD2Mac</string>
+    <key>CFBundleIdentifier</key>
+    <string>net.simioni.rd2mac</string>
+    <key>CFBundleExecutable</key>
+    <string>RD2Mac</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.3</string>
+    <key>CFBundleVersion</key>
+    <string>3</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <!-- Follows the system language automatically (no in-app switch). -->
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>pt-BR</string>
+    </array>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <!-- Menu-bar agent: no Dock icon, no main menu. -->
+    <key>LSUIElement</key>
+    <true/>
+    <!-- BLE beacon advertised for the phone's proximity gate. -->
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>RD2Mac advertises a Bluetooth beacon so your phone can sync the clipboard only when it is near this Mac.</string>
+    <!-- macOS 15+ local-network prompt + Bonjour service declaration. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>RD2Mac transfers files with your phone over the local network.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_rd2mac._tcp</string>
+    </array>
+    <!-- "Send to Phone with RD2Mac" in the system Services menu (Finder/QSpace
+         right-click). Handled by ServiceProvider via NSApp.servicesProvider. -->
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>Send to Phone with RD2Mac</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>sendToPhone</string>
+            <key>NSPortName</key>
+            <string>RD2Mac</string>
+            <key>NSSendFileTypes</key>
+            <array>
+                <string>public.item</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

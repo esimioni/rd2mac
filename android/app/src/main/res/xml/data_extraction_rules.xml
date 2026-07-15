@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ twin of backup_rules.xml: same exclusion for cloud backup and
+     device-to-device transfer (see that file for the why). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="rd2mac.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="rd2mac.xml" />
+    </device-transfer>
+</data-extraction-rules>

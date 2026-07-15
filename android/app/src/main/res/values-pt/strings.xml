@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Português (pt). Segue o idioma do sistema; sem escolha manual. -->
+<resources>
+    <string name="app_name">RD2Mac</string>
+    <string name="tagline">Transferência de arquivos entre este telefone e o seu Mac</string>
+    <string name="section_choose_mac">Escolha o seu Mac</string>
+    <string name="searching_macs">Procurando Macs na mesma rede Wi-Fi…</string>
+    <string name="forget_mac">Esquecer este Mac</string>
+    <string name="clipboard_receive">Receber área de transferência do Mac</string>
+    <string name="prox_switch">Somente com o Mac por perto</string>
+    <string name="prox_desk">Mesma mesa</string>
+    <string name="prox_room">Mesma sala</string>
+    <string name="prox_house">Mesma casa</string>
+    <string name="prox_near">Mac por perto ✓ — sync ativo</string>
+    <string name="prox_far">Mac longe — sync da área de transferência pausado</string>
+    <string name="prox_perm_denied">Sem permissão de Bluetooth, o filtro de proximidade não funciona</string>
+    <string name="tile_send_to_mac">Enviar p/ Mac</string>
+    <string name="tile_receive_from_mac">Receber do Mac</string>
+
+    <string name="service_on">● Serviço ativo</string>
+    <string name="service_off">○ Serviço parado</string>
+    <string name="status_encrypted">Comunicação criptografada</string>
+    <string name="status_no_mac">Nenhum Mac escolhido.\nToque em um Mac abaixo para parear.</string>
+    <string name="status_connected">Conectado ✓</string>
+    <string name="status_searching">Procurando na rede…</string>
+    <string name="status_mac">Mac: %1$s</string>
+    <string name="already_paired">Esse Mac já está pareado com outro aparelho</string>
+
+    <string name="clip_empty">Área de transferência vazia</string>
+    <string name="clip_no_mac">Mac não encontrado na rede</string>
+    <string name="clip_sent">Enviado ao Mac ✓</string>
+    <string name="clip_fail">Falha ao enviar</string>
+
+    <string name="share_nothing">RD2Mac: nada para enviar</string>
+    <string name="share_open_choose">RD2Mac: abra o app e escolha um Mac</string>
+    <string name="share_no_mac">RD2Mac: Mac não encontrado na rede</string>
+    <string name="share_read_fail">RD2Mac: não consegui ler os arquivos</string>
+    <string name="share_sent">RD2Mac: enviado ✓ (%1$d)</string>
+    <string name="share_failed">RD2Mac: falhou %1$d de %2$d</string>
+
+    <string name="notif_ready">Pronto</string>
+    <string name="notif_mac">Mac: %1$s</string>
+    <string name="notif_searching">Procurando o Mac…</string>
+    <string name="channel_desc">Mantém o RD2Mac acessível na rede local</string>
+    <string name="channel_pair">Pedidos de pareamento</string>
+    <string name="notif_pair_title">Pedido de pareamento</string>
+    <string name="notif_pair_body">%1$s quer parear — toque para comparar o código</string>
+    <string name="perm_media_denied">Sem acesso à mídia, o Mac não consegue puxar capturas de tela ou fotos</string>
+
+    <string name="sas_title">Parear com %1$s?</string>
+    <string name="sas_body">Código: %1$s\n\nConfirme que é o MESMO código mostrado no outro aparelho.</string>
+    <string name="sas_confirm">Confirmar</string>
+    <string name="sas_cancel">Cancelar</string>
+</resources>

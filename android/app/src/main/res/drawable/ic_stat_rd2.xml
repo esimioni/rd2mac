@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon: alpha-only silhouette (send/receive arrows). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,84 L38,48 L26,48 L44,22 L62,48 L50,48 L50,84 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M58,24 L58,60 L46,60 L64,86 L82,60 L70,60 L70,24 Z" />
+</vector>

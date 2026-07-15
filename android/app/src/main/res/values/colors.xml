@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand navy (matches the app icon background). -->
+    <color name="rd2mac_navy">#152244</color>
+    <color name="rd2mac_blue">#2E4C8A</color>
+    <color name="rd2mac_blue_light">#A9C0F5</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

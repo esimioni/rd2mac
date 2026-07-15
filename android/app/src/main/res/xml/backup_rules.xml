@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep the pairing secrets (AES key + token, in the "rd2mac" prefs) out of
+     Google Auto Backup: restored on another device they'd clone the identity
+     with a stale key. Pairing is cheap to redo. Pre-Android-12 devices. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="rd2mac.xml" />
+</full-backup-content>

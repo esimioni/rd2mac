@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Default (English). Portuguese in values-pt/. The app follows the system language. -->
+<resources>
+    <string name="app_name">RD2Mac</string>
+    <string name="tagline">Transfer files between this phone and your Mac</string>
+    <string name="section_choose_mac">Choose your Mac</string>
+    <string name="searching_macs">Looking for Macs on the same Wi-Fi…</string>
+    <string name="forget_mac">Forget this Mac</string>
+    <string name="clipboard_receive">Receive clipboard from the Mac</string>
+    <string name="prox_switch">Only when the Mac is nearby</string>
+    <string name="prox_desk">Same desk</string>
+    <string name="prox_room">Same room</string>
+    <string name="prox_house">Same house</string>
+    <string name="prox_near">Mac nearby ✓ — sync active</string>
+    <string name="prox_far">Mac away — clipboard sync paused</string>
+    <string name="prox_perm_denied">Without Bluetooth permission the proximity filter can\'t work</string>
+    <string name="tile_send_to_mac">Send to Mac</string>
+    <string name="tile_receive_from_mac">Receive from Mac</string>
+
+    <string name="service_on">● Service on</string>
+    <string name="service_off">○ Service stopped</string>
+    <string name="status_encrypted">Communication is encrypted</string>
+    <string name="status_no_mac">No Mac chosen.\nTap a Mac below to pair.</string>
+    <string name="status_connected">Connected ✓</string>
+    <string name="status_searching">Looking on the network…</string>
+    <string name="status_mac">Mac: %1$s</string>
+    <string name="already_paired">This Mac is already paired with another device</string>
+
+    <string name="clip_empty">Clipboard is empty</string>
+    <string name="clip_no_mac">Mac not found on the network</string>
+    <string name="clip_sent">Sent to Mac ✓</string>
+    <string name="clip_fail">Couldn\'t send</string>
+
+    <string name="share_nothing">RD2Mac: nothing to send</string>
+    <string name="share_open_choose">RD2Mac: open the app and choose a Mac</string>
+    <string name="share_no_mac">RD2Mac: Mac not found on the network</string>
+    <string name="share_read_fail">RD2Mac: couldn\'t read the files</string>
+    <string name="share_sent">RD2Mac: sent ✓ (%1$d)</string>
+    <string name="share_failed">RD2Mac: failed %1$d of %2$d</string>
+
+    <string name="notif_ready">Ready</string>
+    <string name="notif_mac">Mac: %1$s</string>
+    <string name="notif_searching">Looking for the Mac…</string>
+    <string name="channel_desc">Keeps RD2Mac reachable on the LAN</string>
+    <string name="channel_pair">Pairing requests</string>
+    <string name="notif_pair_title">Pairing request</string>
+    <string name="notif_pair_body">%1$s wants to pair — tap to compare the code</string>
+    <string name="perm_media_denied">Without media access the Mac can\'t pull screenshots or photos</string>
+
+    <string name="sas_title">Pair with %1$s?</string>
+    <string name="sas_body">Code: %1$s\n\nConfirm it is the SAME code shown on the other device.</string>
+    <string name="sas_confirm">Confirm</string>
+    <string name="sas_cancel">Cancel</string>
+</resources>
