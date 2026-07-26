@@ -23,3 +23,12 @@
 "cli.ok" = "rd2mac está pronto em %@.\n\nUma IA com acesso ao shell (ou você, no terminal) já pode puxar arquivos do seu telefone — ex.: rd2mac pull-screenshot.";
 "cli.err_missing" = "O binário rd2mac não está no pacote do app — recompile o app.";
 "cli.err_failed" = "Não foi possível criar o link em /usr/local/bin.";
+"finder.send" = "Enviar para o telefone";
+"finder.err_title" = "O RD2Mac não conseguiu enviar";
+"menu.login" = "Iniciar ao fazer login";
+"login.title" = "Iniciar o RD2Mac automaticamente?";
+"login.body" = "O RD2Mac precisa estar aberto para enviar e receber arquivos e a área de transferência do telefone. Iniciar automaticamente quando você fizer login?";
+"login.yes" = "Iniciar ao fazer login";
+"login.no" = "Agora não";
+"login.err_title" = "Não foi possível configurar o início automático";
+"login.err_body" = "Abra Ajustes do Sistema → Geral → Itens de Início e Extensões e adicione o RD2Mac em “Abrir ao Fazer Login”.\n\n%@";

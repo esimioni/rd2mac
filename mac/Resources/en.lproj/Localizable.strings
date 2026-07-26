@@ -23,3 +23,12 @@
 "cli.ok" = "rd2mac is ready at %@.\n\nAn AI agent with shell access (or you, in a terminal) can now pull files off your phone — e.g. rd2mac pull-screenshot.";
 "cli.err_missing" = "The rd2mac binary isn't in the app bundle — rebuild the app.";
 "cli.err_failed" = "Could not create the link in /usr/local/bin.";
+"finder.send" = "Send to Phone";
+"finder.err_title" = "RD2Mac couldn't send";
+"menu.login" = "Start at login";
+"login.title" = "Start RD2Mac automatically?";
+"login.body" = "RD2Mac has to be running to send and receive files and clipboard from your phone. Start it automatically when you log in?";
+"login.yes" = "Start at login";
+"login.no" = "Not now";
+"login.err_title" = "Couldn't set up start at login";
+"login.err_body" = "Open System Settings → General → Login Items & Extensions and add RD2Mac under “Open at Login”.\n\n%@";

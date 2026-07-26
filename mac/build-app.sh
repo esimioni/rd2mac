@@ -59,6 +59,22 @@ swiftc -sdk "$SDK" -target arm64-apple-macos13.0 -module-name ShareExtension \
     "$SE_SRC/ShareController.swift"
 cp "$SE_SRC/Info.plist" "$APPEX/Contents/Info.plist"
 
+echo "▶ Building + embedding Finder Sync Extension (top-level right-click item)…"
+# FIFinderSync is the only Apple API that reaches the ROOT of the Finder
+# contextual menu (Services/Share/Quick Actions are always a submenu). It posts
+# the selected PATHS to the app's loopback /send?path=, so it needs no file access.
+FE_SRC="$HERE/FinderExtension"
+FE_APPEX="$STAGE/Contents/PlugIns/FinderExtension.appex"
+mkdir -p "$FE_APPEX/Contents/MacOS" "$FE_APPEX/Contents/Resources"
+swiftc -sdk "$SDK" -target arm64-apple-macos13.0 -module-name FinderExtension \
+    -O -emit-executable -o "$FE_APPEX/Contents/MacOS/FinderExtension" \
+    -framework FinderSync \
+    -Xlinker -e -Xlinker _NSExtensionMain \
+    "$FE_SRC/FinderController.swift"
+cp "$FE_SRC/Info.plist" "$FE_APPEX/Contents/Info.plist"
+# The menu title is localized from the app's own strings (same file, copied in).
+cp -R "$HERE/Resources/en.lproj" "$HERE/Resources/pt-BR.lproj" "$FE_APPEX/Contents/Resources/"
+
 if [ "$RELEASE" -eq 1 ]; then
     echo "▶ Signing for distribution (Developer ID + hardened runtime)…"
     SIGN_ID="$(security find-identity -v -p codesigning \
@@ -74,6 +90,8 @@ if [ "$RELEASE" -eq 1 ]; then
     # embedded CLI) first, then the app.
     codesign --force --options runtime --timestamp \
         --entitlements "$SE_SRC/ShareExtension.entitlements" --sign "$SIGN_ID" "$APPEX"
+    codesign --force --options runtime --timestamp \
+        --entitlements "$FE_SRC/FinderExtension.entitlements" --sign "$SIGN_ID" "$FE_APPEX"
     codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$STAGE/Contents/Helpers/rd2mac"
     codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$STAGE"
 
@@ -92,6 +110,7 @@ if [ "$RELEASE" -eq 1 ]; then
 else
     echo "▶ Ad-hoc signing (nested Mach-Os first, then app)…"
     codesign --force --sign - --entitlements "$SE_SRC/ShareExtension.entitlements" "$APPEX"
+    codesign --force --sign - --entitlements "$FE_SRC/FinderExtension.entitlements" "$FE_APPEX"
     codesign --force --sign - "$STAGE/Contents/Helpers/rd2mac"
     codesign --force --sign - "$STAGE"
 fi
@@ -109,6 +128,11 @@ cp -R "$STAGE" "$DEST_APP"
 echo "▶ Registering with Launch Services (so the Share Extension is discovered)…"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 "$LSREGISTER" -f "$DEST_APP" 2>/dev/null || true
+
+echo "▶ Enabling the Finder extension (and restarting Finder so it reloads)…"
+pluginkit -a "$DEST_APP/Contents/PlugIns/FinderExtension.appex" 2>/dev/null || true
+pluginkit -e use -i net.simioni.rd2mac.FinderExtension 2>/dev/null || true
+killall Finder 2>/dev/null || true
 
 echo "▶ Installing CLI → ${CLI_DEST}…"
 mkdir -p "$(dirname "$CLI_DEST")"
@@ -150,3 +174,5 @@ echo "  First run may prompt for Local Network — allow it, or enable RD2Mac"
 echo "  under System Settings → Privacy & Security → Local Network."
 echo "  Share menu: if RD2Mac doesn't appear, enable it under"
 echo "  System Settings → General → Login Items & Extensions → Sharing."
+echo "  Right-click menu: 'Send to Phone' comes from the Finder extension — if it's"
+echo "  missing, enable RD2Mac under Login Items & Extensions → File Providers/Finder."

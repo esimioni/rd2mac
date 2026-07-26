@@ -1,6 +1,7 @@
 import AppKit
 import CryptoKit
 import RD2MacCore
+import ServiceManagement
 
 /// Short helper for a localized menu string (en / pt-BR bundles in Resources).
 private func L(_ key: String) -> String { NSLocalizedString(key, comment: "") }
@@ -93,8 +94,91 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startDiscovery()
         startServicesProvider()
         proximity.start()   // BLE beacon for the phone's proximity gate
-        // Launch-at-login is handled by a LaunchAgent (installed by build-app.sh),
-        // which is robust for an ad-hoc-signed app (SMAppService needs Developer ID).
+        enableFinderExtensionOnce()
+        // Let the first launch settle (and the system's Local Network prompt land)
+        // before asking anything of the user.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.offerLaunchAtLoginOnce()
+        }
+    }
+
+    /// macOS ships Finder extensions DISABLED — the "Send to Phone" item at the top
+    /// of the right-click menu never appears until someone flips it on (System
+    /// Settings → General → Login Items & Extensions, or `pluginkit -e use`). Doing
+    /// it here is what makes the DMG a one-drag install for a non-technical user.
+    /// Runs only once (UserDefaults flag), so a user who later turns it off in
+    /// System Settings isn't overridden at the next launch.
+    private func enableFinderExtensionOnce() {
+        let key = "finderExtensionAutoEnabled"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        DispatchQueue.global(qos: .utility).async {
+            let id = "net.simioni.rd2mac.FinderExtension"
+            guard Self.run("/usr/bin/pluginkit", ["-e", "use", "-i", id]) else { return }
+            // The Finder only loads a just-enabled extension after it relaunches
+            // (it comes back by itself, so this costs the user open windows once).
+            Self.run("/usr/bin/killall", ["Finder"])
+        }
+    }
+
+    /// True on a machine built by build-app.sh: its LaunchAgent already starts the
+    /// app at login, so the app must not offer (or toggle) a second mechanism.
+    /// An installed copy from the DMG has no agent — that's where this matters.
+    private var launchAgentInstalled: Bool {
+        FileManager.default.fileExists(
+            atPath: NSHomeDirectory() + "/Library/LaunchAgents/net.simioni.rd2mac.plist")
+    }
+
+    /// Offer launch-at-login once, on first run. The app has to be running to
+    /// receive anything from the phone, so a user who never opens it manually
+    /// just sees RD2Mac "not working" — this is the fix, not a nicety.
+    /// SMAppService needs a real signature: the distributed (Developer ID +
+    /// notarized) build registers fine; an ad-hoc dev build can't — and doesn't
+    /// need to, since build-app.sh installed the LaunchAgent there.
+    private func offerLaunchAtLoginOnce() {
+        let key = "launchAtLoginAsked"
+        guard !UserDefaults.standard.bool(forKey: key),
+              !launchAgentInstalled,
+              SMAppService.mainApp.status != .enabled else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let alert = NSAlert()
+        alert.messageText = L("login.title")
+        alert.informativeText = L("login.body")
+        alert.addButton(withTitle: L("login.yes"))
+        alert.addButton(withTitle: L("login.no"))
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn { setLaunchAtLogin(true) }
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        setLaunchAtLogin(SMAppService.mainApp.status != .enabled)
+        rebuildMenu()
+    }
+
+    /// Register/unregister with SMAppService; on failure tell the user the manual
+    /// route instead of failing silently (the checkbox would just stay off).
+    private func setLaunchAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() }
+            else { try SMAppService.mainApp.unregister() }
+        } catch {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = L("login.err_title")
+            alert.informativeText = String(format: L("login.err_body"), error.localizedDescription)
+            alert.addButton(withTitle: L("button.ok"))
+            alert.runModal()
+        }
+    }
+
+    @discardableResult
+    private static func run(_ path: String, _ args: [String]) -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: path)
+        task.arguments = args
+        guard (try? task.run()) != nil else { return false }
+        task.waitUntilExit()
+        return task.terminationStatus == 0
     }
 
     private func setupStatusItem() {
@@ -279,6 +363,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                     action: #selector(installCLITool), keyEquivalent: "")
         installCLI.target = self
         menu.addItem(installCLI)
+
+        // Hidden on a dev machine: there the LaunchAgent owns launch-at-login, and
+        // a second (always-off) checkbox would just lie about the real state.
+        if !launchAgentInstalled {
+            let login = NSMenuItem(title: L("menu.login"),
+                                   action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+            login.target = self
+            login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+            menu.addItem(login)
+        }
 
         menu.addItem(.separator())
         let quit = NSMenuItem(title: L("menu.quit"), action: #selector(quitApp), keyEquivalent: "q")

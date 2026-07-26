@@ -67,6 +67,14 @@ rd2mac send <file>...      # send local files (images/videos → gallery, else D
 rd2mac peer                # show the phone discovered on the network
 ```
 
+**Mac → phone (Finder right-click, top level):** right-click a file → **Send to Phone**,
+no submenu. Provided by a Finder Sync extension (`FIFinderSync`) embedded in the app —
+the only Apple API that reaches the root of the contextual menu. It posts the selected
+paths to the loopback control endpoint (`POST /send?path=`), so it needs no file access
+of its own. macOS ships Finder extensions disabled; the app enables it once on first
+launch (`pluginkit -e use` + a Finder relaunch), or do it under *System Settings →
+General → Login Items & Extensions*. Folders are not offered (one file per transfer).
+
 **Mac → phone (Share menu):** right-click a file in Finder / QSpace → **Share → RD2Mac**
 → sent to the phone (graphical equivalent of `rd2mac send`). Provided by a Share
 Extension embedded in the app; enable it under *System Settings → General → Login
