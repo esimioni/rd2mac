@@ -40,7 +40,13 @@ final class ServiceProvider: NSObject {
                 semaphore.wait()
                 ok ? (sent += 1) : (failed += 1)
             }
-            DispatchQueue.main.async { self?.onResult?(sent, failed) }
+            DispatchQueue.main.async {
+                // Same audible result as the Finder extension: the menu-bar flash
+                // is easy to miss, and third-party file managers (QSpace) surface
+                // this Services item at the top level, where it's the only feedback.
+                NSSound(named: failed == 0 ? "Glass" : "Basso")?.play()
+                self?.onResult?(sent, failed)
+            }
         }
     }
 }
