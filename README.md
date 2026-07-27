@@ -73,7 +73,9 @@ the only Apple API that reaches the root of the contextual menu. It posts the se
 paths to the loopback control endpoint (`POST /send?path=`), so it needs no file access
 of its own. macOS ships Finder extensions disabled; the app enables it once on first
 launch (`pluginkit -e use` + a Finder relaunch), or do it under *System Settings →
-General → Login Items & Extensions*. Folders are not offered (one file per transfer).
+General → Login Items & Extensions*. Folders are filtered out of the selection (the menu
+item hides when only folders are selected); a multi-file selection sends every file, one
+transfer each, with a single sound at the end.
 
 **Mac → phone (Share menu):** right-click a file in Finder / QSpace → **Share → RD2Mac**
 → sent to the phone (graphical equivalent of `rd2mac send`). Provided by a Share
