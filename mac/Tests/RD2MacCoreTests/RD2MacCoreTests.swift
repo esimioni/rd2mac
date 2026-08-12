@@ -719,6 +719,18 @@ final class BrowseKeepAliveTests: XCTestCase {
         XCTAssertTrue(k.shouldRearm(now: t0.addingTimeInterval(11), forced: true))
     }
 
+    func testAdvertiserPeriodIsSlowerThanTheBrowsePeriod() {
+        // The advertiser reuses this rule with a 5-minute period: re-announcing
+        // is what reaches a phone that never gets our replies, but a goodbye +
+        // announce every minute would make everyone else's list flicker.
+        var advertiser = BrowseKeepAlive(now: t0, rearmEvery: 300)
+        XCTAssertFalse(advertiser.shouldRearm(now: t0.addingTimeInterval(60)))
+        XCTAssertFalse(advertiser.shouldRearm(now: t0.addingTimeInterval(299)))
+        XCTAssertTrue(advertiser.shouldRearm(now: t0.addingTimeInterval(300)))
+        // A wake or a network change still re-announces at once.
+        XCTAssertTrue(advertiser.shouldRearm(now: t0.addingTimeInterval(320), forced: true))
+    }
+
     func testPeerThatSurvivesTwoRearmsWithoutAnsweringIsDropped() {
         let k = BrowseKeepAlive(now: t0, rearmEvery: 60, peerTTL: 150, debounce: 5)
         XCTAssertFalse(k.isStale(seen: t0, now: t0.addingTimeInterval(150)))

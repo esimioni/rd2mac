@@ -261,6 +261,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.rebuildMenu()
             }
         }
+        // Finding is only half of it: on this Wi-Fi the phone's queries go
+        // unanswered, and the only packet that reaches it is our own
+        // announcement — so every browse re-arm also re-announces (on its own,
+        // slower period). One set of triggers drives both halves.
+        browser.onRearm = { [weak self] forced in
+            if self?.advertiser.republishIfDue(forced: forced) == true {
+                NSLog("RD2Mac: re-announced the Bonjour service")
+            }
+        }
         browser.start()
 
         // Waking is the classic way the browse comes back dead: the app is still

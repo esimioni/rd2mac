@@ -67,10 +67,18 @@ public struct ResolvedPeer: Equatable, Sendable {
 /// owner (the menu-bar app) must have a running RunLoop — which AppKit provides.
 public final class PeerAdvertiser: NSObject, NetServiceDelegate {
     private var service: NetService?
+    private var published: (name: String, port: UInt16, txt: [String: String])?
+    /// Same rule as the browse keep-alive, longer period: re-announcing is what
+    /// reaches a phone whose queries we never answer (measured 11/08/2026 — the
+    /// phone found this Mac the instant it re-published, and not once in 70 s of
+    /// active browsing before that; this Wi-Fi drops the query or the reply, and
+    /// a gratuitous announcement is the packet that does get through).
+    private var keepAlive = BrowseKeepAlive(rearmEvery: 300)
 
     public override init() { super.init() }
 
     public func start(name: String, port: UInt16, txt: [String: String]) {
+        published = (name, port, txt)
         let svc = NetService(domain: "", type: RD2Mac.serviceType + ".",
                              name: name, port: Int32(port))
         var record: [String: Data] = [:]
@@ -79,6 +87,18 @@ public final class PeerAdvertiser: NSObject, NetServiceDelegate {
         svc.delegate = self
         svc.publish()
         service = svc
+    }
+
+    /// Re-announce if the period elapsed (or `forced`, on wake / network change).
+    /// A device that already has us resolved isn't listening — the Android side
+    /// sleeps its browse once it resolves — so this only ever reaches someone who
+    /// is currently searching. Returns whether it re-announced.
+    @discardableResult
+    public func republishIfDue(now: Date = Date(), forced: Bool = false) -> Bool {
+        guard let published, keepAlive.shouldRearm(now: now, forced: forced) else { return false }
+        stop()
+        start(name: published.name, port: published.port, txt: published.txt)
+        return true
     }
 
     public func stop() {
@@ -119,6 +139,12 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
     /// single-peer `onResolve` so the UI can offer a pick list.
     public var onPeersChanged: (([ResolvedPeer]) -> Void)?
 
+    /// Fired on every re-arm, with `forced` set when an explicit signal drove it
+    /// (search failed, wake, network path change). The app hangs the advertiser's
+    /// re-announcement here so both halves of discovery share one set of triggers
+    /// — one timer, one path monitor, one wake observer.
+    public var onRearm: ((_ forced: Bool) -> Void)?
+
     public init(excludePlatform: Platform) {
         self.excludePlatform = excludePlatform
         super.init()
@@ -158,6 +184,7 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
         guard keepAlive.shouldRearm(now: Date(), forced: true) else { return }
         NSLog("RD2Mac: re-arming Bonjour browse (\(reason))")
         arm()
+        onRearm?(true)
     }
 
     /// Start (or restart) the search on a fresh browser. A fresh object rather
@@ -184,6 +211,7 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
             // re-arm exists for, and it's the breadcrumb if it ever fails again.
             if entries.isEmpty { NSLog("RD2Mac: no peer yet — re-arming Bonjour browse") }
             arm()
+            onRearm?(false)
         }
     }
 
