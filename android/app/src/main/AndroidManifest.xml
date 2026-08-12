@@ -87,6 +87,11 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
+            <!-- Same job after an update: without this, installing a new version
+                 leaves the phone unreachable until someone opens the app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
         </receiver>
 
         <!-- Transparent helper: reads the phone clipboard (needs focus) and sends it to the Mac. -->
