@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var forgetButton: MaterialButton
     private lateinit var clipboardSwitch: MaterialSwitch
     private lateinit var photoLocationSwitch: MaterialSwitch
+    private lateinit var photoLocationHint: TextView
     private lateinit var keepAliveSwitch: MaterialSwitch
     private lateinit var keepAliveHint: TextView
     private lateinit var proximitySwitch: MaterialSwitch
@@ -65,6 +66,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         photoLocationSwitch = findViewById(R.id.photoLocationSwitch)
+        photoLocationHint = findViewById(R.id.photoLocationHint)
         photoLocationSwitch.setOnClickListener { onPhotoLocationToggled() }
         keepAliveSwitch = findViewById(R.id.keepAliveSwitch)
         keepAliveHint = findViewById(R.id.keepAliveHint)
@@ -196,10 +198,15 @@ class MainActivity : AppCompatActivity() {
         clipboardSwitch.isChecked = RD2MacState.receiveClipboard
         // Both of these can change outside the app (permission revoked in Settings,
         // battery exemption granted in a system dialog) — read the truth every time.
-        photoLocationSwitch.isChecked = MediaLocationPolicy.effective(
+        val keepLocation = MediaLocationPolicy.effective(
             switchOn = pairing.keepPhotoLocation,
             permissionGranted = checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION)
                 == PackageManager.PERMISSION_GRANTED)
+        photoLocationSwitch.isChecked = keepLocation
+        // Off doesn't mean "no location": Android strips it from the formats it can
+        // parse (JPEG) and leaves it in the ones it can't (HEIC). Say so, or the
+        // switch promises a control it doesn't have.
+        photoLocationHint.visibility = if (keepLocation) View.GONE else View.VISIBLE
         val exempt = (getSystemService(POWER_SERVICE) as android.os.PowerManager)
             .isIgnoringBatteryOptimizations(packageName)
         keepAliveSwitch.isChecked = exempt

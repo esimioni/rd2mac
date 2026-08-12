@@ -8,6 +8,7 @@
     <string name="forget_mac">Forget this Mac</string>
     <string name="clipboard_receive">Receive clipboard from the Mac</string>
     <string name="photo_location">Send photos with their location</string>
+    <string name="photo_location_hint">Off, Android decides: it removes the location from some photos and leaves it in others. On, every photo keeps it.</string>
     <string name="photo_location_denied">Without the media location permission, photos arrive without coordinates</string>
     <string name="keep_alive">Keep running when I clear the recents list</string>
     <string name="keep_alive_hint">Android may stop RD2Mac when you close all apps. Turn this on to keep the Mac connection alive.</string>

@@ -77,6 +77,16 @@
             android:textSize="16sp"
             android:textColor="?attr/colorOnSurface" />
 
+        <TextView
+            android:id="@+id/photoLocationHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="@string/photo_location_hint"
+            android:textSize="13sp"
+            android:visibility="gone"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
         <!-- Survives clearing the recents list (the OEM kills a battery-restricted
              app's service when the task goes away). -->
         <com.google.android.material.materialswitch.MaterialSwitch

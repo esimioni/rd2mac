@@ -8,6 +8,7 @@
     <string name="forget_mac">Esquecer este Mac</string>
     <string name="clipboard_receive">Receber área de transferência do Mac</string>
     <string name="photo_location">Enviar fotos com a localização</string>
+    <string name="photo_location_hint">Desligado, quem decide é o Android: ele tira a localização de algumas fotos e deixa em outras. Ligado, toda foto mantém.</string>
     <string name="photo_location_denied">Sem a permissão de localização das mídias, as fotos chegam sem coordenadas</string>
     <string name="keep_alive">Continuar rodando quando eu fechar tudo</string>
     <string name="keep_alive_hint">O Android pode parar o RD2Mac quando você fecha todos os aplicativos. Ative para manter a conexão com o Mac.</string>
