@@ -1,4 +1,46 @@
 import Foundation
+import Network
+
+/// The rule that keeps a Bonjour browse alive, split out of `PeerBrowser` so it
+/// can be tested without killing mDNS for real.
+///
+/// Why a rule at all: a `NetServiceBrowser` can stop delivering with **no error
+/// and no callback** — mDNSResponder puts long-lived browses to sleep, and a
+/// sleep/wake or a Wi-Fi change can kill the search outright. The object stays
+/// alive, the peer list stays empty, and every answer is a truthful-but-useless
+/// "phone not found" until the app is restarted (real defect, 11/08/2026).
+/// So recovery cannot hang off an error callback that may never come: the browse
+/// is re-armed on a schedule, and a peer that doesn't answer a re-arm is dropped
+/// so a dead browse can't leave a stale address behind either.
+struct BrowseKeepAlive {
+    /// Re-arm the search this often even while it looks healthy.
+    let rearmEvery: TimeInterval
+    /// Drop a peer unseen for this long (~2 missed re-arms).
+    let peerTTL: TimeInterval
+    /// Floor between re-arms, so a burst of wake/path events can't hammer mDNS.
+    let debounce: TimeInterval
+    private var lastRearm: Date
+
+    init(now: Date = Date(), rearmEvery: TimeInterval = 60,
+         peerTTL: TimeInterval = 150, debounce: TimeInterval = 5) {
+        self.rearmEvery = rearmEvery
+        self.peerTTL = peerTTL
+        self.debounce = debounce
+        self.lastRearm = now
+    }
+
+    /// `forced` = an explicit signal arrived (search failed, machine woke, network
+    /// path changed): act now instead of waiting out the period.
+    mutating func shouldRearm(now: Date, forced: Bool = false) -> Bool {
+        guard now.timeIntervalSince(lastRearm) >= (forced ? debounce : rearmEvery) else {
+            return false
+        }
+        lastRearm = now
+        return true
+    }
+
+    func isStale(seen: Date, now: Date) -> Bool { now.timeIntervalSince(seen) > peerTTL }
+}
 
 /// A peer resolved on the local network to a concrete address.
 public struct ResolvedPeer: Equatable, Sendable {
@@ -52,12 +94,25 @@ public final class PeerAdvertiser: NSObject, NetServiceDelegate {
 /// Browses for the counterpart peer and resolves it to `ResolvedPeer`.
 /// Ignores our own platform's services (so a Mac only surfaces the phone).
 public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
-    private let browser = NetServiceBrowser()
+    private var browser = NetServiceBrowser()
     private var resolving: Set<NetService> = []
     private let excludePlatform: Platform
 
+    /// A resolved peer plus when it last answered — the timestamp is what lets a
+    /// peer that stopped answering be dropped (see `BrowseKeepAlive`).
+    struct Entry: Equatable {
+        var peer: ResolvedPeer
+        var seen: Date
+    }
+
     /// Live counterpart peers, keyed by their (unique) Bonjour instance name.
-    private var peers: [String: ResolvedPeer] = [:]
+    private var entries: [String: Entry] = [:]
+    private var keepAlive = BrowseKeepAlive()
+    private var timer: Timer?
+    private let pathMonitor = NWPathMonitor()
+    /// Last list handed to `onPeersChanged`, so a re-arm's repeated resolves
+    /// don't rebuild the menu every minute for an unchanged peer set.
+    private var published: [ResolvedPeer] = []
 
     /// Called on the RunLoop thread whenever the live set of counterpart peers
     /// changes — one resolved, or one dropped off the network. Replaces the old
@@ -70,14 +125,79 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
     }
 
     public func start() {
+        arm()
+        // Drives both halves of the keep-alive: re-arm the search, and expire
+        // peers that stopped answering it. Coarse tolerance — this must never be
+        // a reason for the Mac to wake up.
+        let timer = Timer(timeInterval: 15, repeats: true) { [weak self] _ in self?.tick() }
+        timer.tolerance = 5
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+
+        // Wi-Fi change / VPN up / interface flap: the browse is dead or now
+        // pointing at the wrong link, and nothing else would tell us.
+        pathMonitor.pathUpdateHandler = { [weak self] _ in
+            DispatchQueue.main.async { self?.restart(reason: "network path changed") }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "net.simioni.rd2mac.path"))
+    }
+
+    public func stop() {
+        timer?.invalidate()
+        timer = nil
+        pathMonitor.cancel()
+        browser.stop()
+        resolving.removeAll()
+        entries.removeAll()
+        published = []
+    }
+
+    /// Re-arm now because something said so (search failed, machine woke, network
+    /// path changed). Debounced, so a burst of events costs one restart.
+    public func restart(reason: String) {
+        guard keepAlive.shouldRearm(now: Date(), forced: true) else { return }
+        NSLog("RD2Mac: re-arming Bonjour browse (\(reason))")
+        arm()
+    }
+
+    /// Start (or restart) the search on a fresh browser. A fresh object rather
+    /// than `stop()` + search on the old one: a browser that died silently is
+    /// exactly the thing we can't trust to restart cleanly. The old delegate is
+    /// cleared first so its late callbacks can't remove live peers.
+    private func arm() {
+        browser.delegate = nil
+        browser.stop()
+        browser = NetServiceBrowser()
         browser.delegate = self
         browser.searchForServices(ofType: RD2Mac.serviceType + ".", inDomain: "")
     }
 
-    public func stop() {
-        browser.stop()
-        resolving.removeAll()
-        peers.removeAll()
+    private func tick() {
+        let now = Date()
+        let live = Self.liveEntries(entries, now: now, policy: keepAlive)
+        if live.count != entries.count {
+            entries = live
+            publish()
+        }
+        if keepAlive.shouldRearm(now: now) {
+            // Only worth a log line while nothing is found — that's the state the
+            // re-arm exists for, and it's the breadcrumb if it ever fails again.
+            if entries.isEmpty { NSLog("RD2Mac: no peer yet — re-arming Bonjour browse") }
+            arm()
+        }
+    }
+
+    /// Entries still considered present. Pure so the expiry rule is testable.
+    static func liveEntries(_ entries: [String: Entry], now: Date,
+                            policy: BrowseKeepAlive) -> [String: Entry] {
+        entries.filter { !policy.isStale(seen: $0.value.seen, now: now) }
+    }
+
+    private func publish() {
+        let peers = entries.values.map(\.peer).sorted { $0.name < $1.name }
+        guard peers != published else { return }
+        published = peers
+        onPeersChanged?(peers)
     }
 
     public func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService,
@@ -89,9 +209,17 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
 
     public func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService,
                                   moreComing: Bool) {
-        if peers.removeValue(forKey: service.name) != nil {
-            onPeersChanged?(Array(peers.values))
+        if entries.removeValue(forKey: service.name) != nil {
+            publish()
         }
+    }
+
+    /// The one failure Bonjour does report. It is not the only way a browse dies
+    /// — hence the timer — but when it fires, recover at once.
+    public func netServiceBrowser(_ browser: NetServiceBrowser,
+                                  didNotSearch errorDict: [String: NSNumber]) {
+        NSLog("RD2Mac: Bonjour browse failed: \(errorDict)")
+        restart(reason: "search failed")
     }
 
     public func netServiceDidResolveAddress(_ sender: NetService) {
@@ -112,9 +240,10 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
         if platform == excludePlatform { return }   // ignore ourselves
 
         guard let host = Self.preferredIP(addresses) else { return }
-        peers[sender.name] = ResolvedPeer(id: id, name: sender.name, host: host,
-                                          port: UInt16(sender.port), platform: platform)
-        onPeersChanged?(Array(peers.values))
+        entries[sender.name] = Entry(peer: ResolvedPeer(id: id, name: sender.name, host: host,
+                                                        port: UInt16(sender.port), platform: platform),
+                                     seen: Date())
+        publish()
     }
 
     public func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {

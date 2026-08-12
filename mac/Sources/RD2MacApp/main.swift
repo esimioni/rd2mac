@@ -262,6 +262,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         browser.start()
+
+        // Waking is the classic way the browse comes back dead: the app is still
+        // in the menu bar, the peer list is empty, and nothing reports anything.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.browser.restart(reason: "wake")
+        }
     }
 
     private func startServicesProvider() {

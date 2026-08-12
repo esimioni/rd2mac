@@ -693,6 +693,49 @@ final class ControlServiceTests: XCTestCase {
 
 /// Pairing: stable device id, persistence of the chosen peer, and the pure
 /// selection of the active peer from the live list.
+/// The browse-recovery rule (BACKLOG 0, 11/08/2026): a `NetServiceBrowser` can
+/// stop delivering with no callback at all, so recovery can't be tested by an
+/// E2E on a healthy network — these tests drive the clock instead, which is the
+/// only way to prove the re-arm happens when nothing reports the failure.
+final class BrowseKeepAliveTests: XCTestCase {
+
+    private let t0 = Date(timeIntervalSince1970: 1_000_000)
+
+    func testRearmsOnScheduleEvenWithNoFailureReported() {
+        var k = BrowseKeepAlive(now: t0, rearmEvery: 60, peerTTL: 150, debounce: 5)
+        XCTAssertFalse(k.shouldRearm(now: t0.addingTimeInterval(59)))
+        XCTAssertTrue(k.shouldRearm(now: t0.addingTimeInterval(60)))
+        // The period restarts from the re-arm, not from t0.
+        XCTAssertFalse(k.shouldRearm(now: t0.addingTimeInterval(119)))
+        XCTAssertTrue(k.shouldRearm(now: t0.addingTimeInterval(120)))
+    }
+
+    func testForcedRearmIsImmediateButDebounced() {
+        var k = BrowseKeepAlive(now: t0, rearmEvery: 60, peerTTL: 150, debounce: 5)
+        // didNotSearch / wake / path change: act now, don't wait out the period.
+        XCTAssertTrue(k.shouldRearm(now: t0.addingTimeInterval(6), forced: true))
+        // A burst of path callbacks must not hammer mDNS.
+        XCTAssertFalse(k.shouldRearm(now: t0.addingTimeInterval(7), forced: true))
+        XCTAssertTrue(k.shouldRearm(now: t0.addingTimeInterval(11), forced: true))
+    }
+
+    func testPeerThatSurvivesTwoRearmsWithoutAnsweringIsDropped() {
+        let k = BrowseKeepAlive(now: t0, rearmEvery: 60, peerTTL: 150, debounce: 5)
+        XCTAssertFalse(k.isStale(seen: t0, now: t0.addingTimeInterval(150)))
+        XCTAssertTrue(k.isStale(seen: t0, now: t0.addingTimeInterval(151)))
+    }
+
+    func testSweepKeepsFreshPeersAndDropsStaleOnes() {
+        let k = BrowseKeepAlive(now: t0, rearmEvery: 60, peerTTL: 150, debounce: 5)
+        let fresh = ResolvedPeer(id: "a", name: "S23", host: "10.0.0.5", port: 53318, platform: .android)
+        let gone = ResolvedPeer(id: "b", name: "Old", host: "10.0.0.9", port: 53318, platform: .android)
+        let entries = ["S23": PeerBrowser.Entry(peer: fresh, seen: t0.addingTimeInterval(140)),
+                       "Old": PeerBrowser.Entry(peer: gone, seen: t0)]
+        let live = PeerBrowser.liveEntries(entries, now: t0.addingTimeInterval(160), policy: k)
+        XCTAssertEqual(Array(live.keys), ["S23"])
+    }
+}
+
 final class PairingTests: XCTestCase {
 
     private func makeStore() -> (PairingStore, String) {
