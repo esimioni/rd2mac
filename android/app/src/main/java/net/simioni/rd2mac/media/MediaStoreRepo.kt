@@ -23,21 +23,42 @@ object MediaStoreRepo {
      * `skip`-th most recent image when no Screenshots folder exists. `skip` powers
      * the Mac's multi-item pull (it asks skip=0,1,2,… for the N newest).
      */
-    fun latestScreenshot(resolver: ContentResolver, skip: Int = 0): ServedFile? {
+    fun latestScreenshot(resolver: ContentResolver, skip: Int = 0,
+                         keepLocation: Boolean = false): ServedFile? {
         val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
         val args = arrayOf("%Screenshots%")
-        return newest(resolver, collection, mediaProjection, selection, args, skip)
-            ?: latestMedia(resolver, "image", skip)
+        return newest(resolver, collection, mediaProjection, selection, args, skip, keepLocation)
+            ?: latestMedia(resolver, "image", skip, keepLocation)
     }
 
     /** The `skip`-th most recent item of the given type ("image" default, or "video"). */
-    fun latestMedia(resolver: ContentResolver, type: String, skip: Int = 0): ServedFile? {
+    fun latestMedia(resolver: ContentResolver, type: String, skip: Int = 0,
+                    keepLocation: Boolean = false): ServedFile? {
         val collection = if (type == "video")
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         else
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        return newest(resolver, collection, mediaProjection, null, null, skip)
+        return newest(resolver, collection, mediaProjection, null, null, skip, keepLocation)
+    }
+
+    /**
+     * Reads the file the Mac will get. MediaProvider hands every app a *redacted*
+     * copy of a photo — GPS Exif stripped — unless the read asks for the original,
+     * and the original is only served while ACCESS_MEDIA_LOCATION is held. Both
+     * halves are required: either one alone still yields a location-less file.
+     *
+     * Falls back to the redacted read when the original is refused (the permission
+     * can be revoked in Settings at any moment): a photo without coordinates beats
+     * a failed transfer.
+     */
+    fun readBytes(resolver: ContentResolver, uri: Uri, keepLocation: Boolean): ByteArray? {
+        if (keepLocation) {
+            runCatching {
+                resolver.openInputStream(MediaStore.setRequireOriginal(uri))?.use { it.readBytes() }
+            }.getOrNull()?.let { return it }
+        }
+        return resolver.openInputStream(uri)?.use { it.readBytes() }
     }
 
     // Generic MediaColumns — valid for both the Images and Video collections.
@@ -54,6 +75,7 @@ object MediaStoreRepo {
         selection: String?,
         args: Array<String>?,
         skip: Int = 0,
+        keepLocation: Boolean = false,
     ): ServedFile? {
         val sort = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
         resolver.query(collection, projection, selection, args, sort)?.use { c ->
@@ -66,7 +88,7 @@ object MediaStoreRepo {
             val mime = c.getString(c.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE))
                 ?: "application/octet-stream"
             val uri = ContentUris.withAppendedId(collection, id)
-            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+            val bytes = readBytes(resolver, uri, keepLocation) ?: return null
             return ServedFile(name, mime, bytes)
         }
         return null

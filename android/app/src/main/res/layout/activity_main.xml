@@ -66,6 +66,38 @@
             android:textSize="16sp"
             android:textColor="?attr/colorOnSurface" />
 
+        <!-- Off by default: Android strips the GPS tags out of every photo it
+             hands us unless the user opts in (ACCESS_MEDIA_LOCATION). -->
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/photoLocationSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="8dp"
+            android:text="@string/photo_location"
+            android:textSize="16sp"
+            android:textColor="?attr/colorOnSurface" />
+
+        <!-- Survives clearing the recents list (the OEM kills a battery-restricted
+             app's service when the task goes away). -->
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/keepAliveSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="8dp"
+            android:text="@string/keep_alive"
+            android:textSize="16sp"
+            android:textColor="?attr/colorOnSurface" />
+
+        <TextView
+            android:id="@+id/keepAliveHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="@string/keep_alive_hint"
+            android:textSize="13sp"
+            android:visibility="gone"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
         <!-- Android→Mac is the "Send to Mac" Quick Settings tile (manual, one
              tap): the OS only lets the FOCUSED app read the clipboard, so any
              automatic background capture ends up stealing window focus. -->

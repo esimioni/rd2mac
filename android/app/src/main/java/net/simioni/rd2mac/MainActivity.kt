@@ -19,6 +19,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
+import net.simioni.rd2mac.media.MediaLocationPolicy
 import net.simioni.rd2mac.net.PairClient
 import net.simioni.rd2mac.net.PairingStore
 import net.simioni.rd2mac.net.ProximityLevels
@@ -38,6 +39,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var emptyState: TextView
     private lateinit var forgetButton: MaterialButton
     private lateinit var clipboardSwitch: MaterialSwitch
+    private lateinit var photoLocationSwitch: MaterialSwitch
+    private lateinit var keepAliveSwitch: MaterialSwitch
+    private lateinit var keepAliveHint: TextView
     private lateinit var proximitySwitch: MaterialSwitch
     private lateinit var proximityLevels: android.widget.RadioGroup
     private lateinit var proximityStatus: TextView
@@ -60,6 +64,12 @@ class MainActivity : AppCompatActivity() {
             RD2MacService.setClipboardReceive(this, clipboardSwitch.isChecked)
         }
 
+        photoLocationSwitch = findViewById(R.id.photoLocationSwitch)
+        photoLocationSwitch.setOnClickListener { onPhotoLocationToggled() }
+        keepAliveSwitch = findViewById(R.id.keepAliveSwitch)
+        keepAliveHint = findViewById(R.id.keepAliveHint)
+        keepAliveSwitch.setOnClickListener { onKeepAliveToggled() }
+
         proximitySwitch = findViewById(R.id.proximitySwitch)
         proximitySwitch.setOnClickListener { onProximityToggled() }
         proximityLevels = findViewById(R.id.proximityLevels)
@@ -75,6 +85,40 @@ class MainActivity : AppCompatActivity() {
 
         requestNeededPermissions()
         RD2MacService.start(this)
+    }
+
+    // MARK: photo location
+
+    /** Turning it on needs ACCESS_MEDIA_LOCATION: without it MediaProvider serves a
+     *  redacted copy of every photo and the coordinates are gone before we read it. */
+    private fun onPhotoLocationToggled() {
+        val on = photoLocationSwitch.isChecked
+        if (on && checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION)
+            != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_MEDIA_LOCATION), REQ_MEDIA_LOC)
+            return   // applied (or reverted) in onRequestPermissionsResult
+        }
+        RD2MacService.setKeepPhotoLocation(this, on)
+    }
+
+    // MARK: keep running
+
+    /** The system decides this one, so the switch just opens the right dialog and
+     *  `render()` reads back the real state — there is no app-side flag to keep. */
+    private fun onKeepAliveToggled() {
+        val power = getSystemService(POWER_SERVICE) as android.os.PowerManager
+        val exempt = power.isIgnoringBatteryOptimizations(packageName)
+        keepAliveSwitch.isChecked = exempt      // the dialog's answer is what counts
+        if (exempt) {
+            // Only the user can take the exemption back — send them where it lives.
+            Toast.makeText(this, getString(R.string.keep_alive_off_hint), Toast.LENGTH_LONG).show()
+            startActivity(android.content.Intent(
+                android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        } else {
+            startActivity(android.content.Intent(
+                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                android.net.Uri.parse("package:$packageName")))
+        }
     }
 
     // MARK: proximity gate
@@ -150,6 +194,16 @@ class MainActivity : AppCompatActivity() {
         emptyState.visibility = if (peers.isEmpty()) View.VISIBLE else View.GONE
         forgetButton.visibility = if (paired != null) View.VISIBLE else View.GONE
         clipboardSwitch.isChecked = RD2MacState.receiveClipboard
+        // Both of these can change outside the app (permission revoked in Settings,
+        // battery exemption granted in a system dialog) — read the truth every time.
+        photoLocationSwitch.isChecked = MediaLocationPolicy.effective(
+            switchOn = pairing.keepPhotoLocation,
+            permissionGranted = checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION)
+                == PackageManager.PERMISSION_GRANTED)
+        val exempt = (getSystemService(POWER_SERVICE) as android.os.PowerManager)
+            .isIgnoringBatteryOptimizations(packageName)
+        keepAliveSwitch.isChecked = exempt
+        keepAliveHint.visibility = if (exempt) View.GONE else View.VISIBLE
 
         val proxOn = RD2MacState.proximityEnabled
         proximitySwitch.isChecked = proxOn
@@ -286,6 +340,18 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, getString(R.string.perm_media_denied), Toast.LENGTH_LONG).show()
                 }
             }
+            REQ_MEDIA_LOC -> {
+                val granted = grantResults.isNotEmpty() &&
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED
+                if (granted) {
+                    RD2MacService.setKeepPhotoLocation(this, true)
+                } else {
+                    photoLocationSwitch.isChecked = false
+                    Toast.makeText(this, getString(R.string.photo_location_denied),
+                        Toast.LENGTH_LONG).show()
+                }
+                render()
+            }
             REQ_BT -> {
                 val granted = grantResults.isNotEmpty() &&
                     grantResults[0] == PackageManager.PERMISSION_GRANTED
@@ -303,5 +369,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val REQ_PERMS = 1
         private const val REQ_BT = 2
+        private const val REQ_MEDIA_LOC = 3
     }
 }

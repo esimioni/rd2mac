@@ -1,5 +1,6 @@
 package net.simioni.rd2mac
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -9,6 +10,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
@@ -26,6 +28,7 @@ import net.simioni.rd2mac.net.ProximityMonitor
 import net.simioni.rd2mac.net.ProximityReporter
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import net.simioni.rd2mac.media.MediaLocationPolicy
 import net.simioni.rd2mac.media.MediaQuery
 import net.simioni.rd2mac.media.MediaSaver
 import net.simioni.rd2mac.media.MediaStoreRepo
@@ -53,6 +56,9 @@ object RD2MacState {
     val peer: ResolvedPeer? get() = PeerSelection.activePeer(livePeers, pairedPeer?.id)
     /** Whether this phone pulls + pastes the Mac's clipboard (mirror of the switch). */
     @Volatile var receiveClipboard = false
+    /** Whether photos leave with their GPS Exif tags (mirror of the switch; only
+     *  true while ACCESS_MEDIA_LOCATION is actually held — see MediaLocationPolicy). */
+    @Volatile var keepPhotoLocation = false
     /** Proximity gate switch (mirror) and live near/far status for the UI. */
     @Volatile var proximityEnabled = false
     @Volatile var proximityNear = false
@@ -120,6 +126,7 @@ class RD2MacService : Service() {
             RD2MacState.boundPort = server.boundPort      // real port (fallback when busy)
             RD2MacState.pairedPeer = pairing.pairedPeer   // restore the chosen Mac
             RD2MacState.receiveClipboard = pairing.receiveClipboard
+            RD2MacState.keepPhotoLocation = effectiveKeepPhotoLocation()
             RD2MacState.proximityEnabled = pairing.proximityEnabled
             RD2MacState.notifyChange()
             if (pairing.receiveClipboard) startClipboardPolling()
@@ -134,6 +141,11 @@ class RD2MacService : Service() {
                 updateProximityMonitor()
                 RD2MacState.notifyChange()   // tiles/UI reflect the toggle
             }
+            ACTION_SET_PHOTO_LOCATION -> {
+                pairing.keepPhotoLocation = intent.getBooleanExtra(EXTRA_ON, false)
+                RD2MacState.keepPhotoLocation = effectiveKeepPhotoLocation()
+                RD2MacState.notifyChange()
+            }
             ACTION_SET_PROXIMITY -> {
                 val on = intent.getBooleanExtra(EXTRA_ON, false)
                 pairing.proximityEnabled = on
@@ -144,6 +156,33 @@ class RD2MacService : Service() {
             }
         }
         return START_STICKY
+    }
+
+    /** The switch, reconciled with the permission it depends on (revocable in
+     *  Settings without telling the app). */
+    private fun effectiveKeepPhotoLocation(): Boolean = MediaLocationPolicy.effective(
+        switchOn = pairing.keepPhotoLocation,
+        permissionGranted = checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION)
+            == PackageManager.PERMISSION_GRANTED)
+
+    /**
+     * The user cleared the recents list. The service is declared
+     * `stopWithTask="false"`, so AOSP keeps it running — but Samsung's One UI kills
+     * the whole process anyway, and that is exactly how the app "disappears" when
+     * Eduardo clears everything without meaning to close RD2Mac. Re-arm from the
+     * outside: an alarm one second out restarts the service after the kill.
+     *
+     * It only lands if the app is exempt from battery optimisation, which is why
+     * the screen offers that switch — a restricted app can't start a foreground
+     * service from the background (Android 12+).
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val restart = PendingIntent.getForegroundService(
+            this, 0, Intent(applicationContext, RD2MacService::class.java),
+            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE)
+        (getSystemService(ALARM_SERVICE) as android.app.AlarmManager)
+            .set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 1000, restart)
+        super.onTaskRemoved(rootIntent)
     }
 
     /** The BLE scan runs only while the option is on AND some automatic sync
@@ -289,12 +328,14 @@ class RD2MacService : Service() {
 
         request.method == "GET" && request.path == RD2Mac.Path.SCREENSHOT_LATEST ->
             if (authorized(request)) serveFile(MediaStoreRepo.latestScreenshot(
-                contentResolver, MediaQuery.skip(request.query["skip"])))
+                contentResolver, MediaQuery.skip(request.query["skip"]),
+                RD2MacState.keepPhotoLocation))
             else unauthorized()
 
         request.method == "GET" && request.path == RD2Mac.Path.MEDIA_LATEST ->
             if (authorized(request)) serveFile(MediaStoreRepo.latestMedia(
-                contentResolver, request.query["type"] ?: "image", MediaQuery.skip(request.query["skip"])))
+                contentResolver, request.query["type"] ?: "image",
+                MediaQuery.skip(request.query["skip"]), RD2MacState.keepPhotoLocation))
             else unauthorized()
 
         else -> HttpServer.Response.text(404, "no route for ${request.method} ${request.path}")
@@ -514,6 +555,7 @@ class RD2MacService : Service() {
         const val NOTIF_PAIRING_ID = 2
         private const val CLIP_POLL_MS = 1500L
         private const val ACTION_SET_CLIPBOARD = "net.simioni.rd2mac.SET_CLIPBOARD"
+        private const val ACTION_SET_PHOTO_LOCATION = "net.simioni.rd2mac.SET_PHOTO_LOCATION"
         private const val ACTION_SET_PROXIMITY = "net.simioni.rd2mac.SET_PROXIMITY"
         private const val EXTRA_ON = "on"
         private const val EXTRA_RSSI = "rssi"
@@ -530,6 +572,12 @@ class RD2MacService : Service() {
         fun setClipboardReceive(context: Context, on: Boolean) {
             startService(context, Intent(context, RD2MacService::class.java)
                 .setAction(ACTION_SET_CLIPBOARD).putExtra(EXTRA_ON, on))
+        }
+
+        /** Toggle sending photos with their GPS Exif tags (permission asked by the UI). */
+        fun setKeepPhotoLocation(context: Context, on: Boolean) {
+            startService(context, Intent(context, RD2MacService::class.java)
+                .setAction(ACTION_SET_PHOTO_LOCATION).putExtra(EXTRA_ON, on))
         }
 
         /** Toggle/configure the proximity gate (threshold in dBm). */

@@ -123,6 +123,12 @@ class PairingStore(context: Context) {
         get() = prefs.getBoolean(KEY_PROX_ON, false)
         set(value) = prefs.edit().putBoolean(KEY_PROX_ON, value).apply()
 
+    /** Serve photos with their GPS Exif tags intact (needs ACCESS_MEDIA_LOCATION).
+     *  Off by default: sending coordinates has to be a choice, not a surprise. */
+    var keepPhotoLocation: Boolean
+        get() = prefs.getBoolean(KEY_PHOTO_LOC, false)
+        set(value) = prefs.edit().putBoolean(KEY_PHOTO_LOC, value).apply()
+
     /** RSSI threshold for "near" (dBm; ~-60 desk, ~-75 room, ~-90 house). */
     var proximityRssi: Int
         get() = prefs.getInt(KEY_PROX_RSSI, -75)
@@ -137,6 +143,7 @@ class PairingStore(context: Context) {
         private const val KEY_TOKEN = "pairedToken"
         private const val KEY_KEY = "pairedKey"
         private const val KEY_RCV_CLIP = "receiveClipboard"
+        private const val KEY_PHOTO_LOC = "keepPhotoLocation"
         private const val KEY_PROX_ON = "proximityEnabled"
         private const val KEY_PROX_RSSI = "proximityRssi"
     }
