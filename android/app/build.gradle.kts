@@ -20,8 +20,8 @@ android {
         applicationId = "net.simioni.rd2mac"
         minSdk = 33          // Android 13: READ_MEDIA_IMAGES, POST_NOTIFICATIONS
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3"   // + pull N (skip) + CLI embutido no bundle / menu Install
+        versionCode = 4
+        versionName = "0.5"   // alinhado com o Mac: sobrevive ao "fechar tudo" + switch de localização das fotos
     }
 
     signingConfigs {
