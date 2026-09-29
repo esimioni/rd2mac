@@ -1,6 +1,7 @@
 package net.simioni.rd2mac
 
 import net.simioni.rd2mac.io.BoundedInputStream
+import net.simioni.rd2mac.io.CountingInputStream
 import net.simioni.rd2mac.io.Streams
 import net.simioni.rd2mac.net.GcmStream
 import net.simioni.rd2mac.net.RD2Crypto
@@ -70,5 +71,14 @@ class WireBodyTest {
     @Test fun drainReportsWhetherTheBodyFitTheLimit() {
         assertTrue(Streams.drain(BoundedInputStream(ByteArray(100).inputStream(), 100), 100))
         assertFalse(Streams.drain(BoundedInputStream(ByteArray(101).inputStream(), 101), 100))
+    }
+
+    @Test fun countingStreamReportsTheRunningTotal() {
+        val counts = mutableListOf<Long>()
+        val input = CountingInputStream("0123456789".byteInputStream()) { counts += it }
+        input.read()
+        input.read(ByteArray(4))
+        input.readBytes()
+        assertEquals(listOf(1L, 5L, 10L), counts)
     }
 }

@@ -2,7 +2,6 @@ package net.simioni.rd2mac
 
 import android.Manifest
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -114,7 +113,7 @@ class RD2MacService : Service() {
     override fun onCreate() {
         super.onCreate()
         pairing = PairingStore(this)
-        createChannel()
+        Notifications.ensureChannels(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -511,36 +510,25 @@ class RD2MacService : Service() {
         val notification = buildNotification(status)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             // specialUse: a persistent LAN server has no dataSync-style timeout.
-            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(Notifications.SERVICE_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
-            startForeground(NOTIF_ID, notification)
+            startForeground(Notifications.SERVICE_ID, notification)
         }
     }
 
     private fun updateNotification(status: String) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIF_ID, buildNotification(status))
+        nm.notify(Notifications.SERVICE_ID, buildNotification(status))
     }
 
     private fun buildNotification(status: String): Notification =
-        NotificationCompat.Builder(this, CHANNEL_ID)
+        NotificationCompat.Builder(this, Notifications.SERVICE_CHANNEL)
             .setContentTitle("RD2Mac")
             .setContentText(status)
             .setSmallIcon(R.drawable.ic_stat_rd2)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
-
-    private fun createChannel() {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(NotificationChannel(
-            CHANNEL_ID, getString(R.string.app_name), NotificationManager.IMPORTANCE_MIN
-        ).apply { description = getString(R.string.channel_desc) })
-        // Separate high-importance channel: a pending pairing needs the user's
-        // eyes NOW (the Mac is waiting on the code comparison).
-        nm.createNotificationChannel(NotificationChannel(
-            PAIR_CHANNEL_ID, getString(R.string.channel_pair), NotificationManager.IMPORTANCE_HIGH))
-    }
 
     /** Mac initiated pairing while the UI is closed: surface it, or the Mac ends
      *  up paired one-sided (401 on every transfer) with no clue on the phone. */
@@ -549,7 +537,7 @@ class RD2MacService : Service() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIF_PAIRING_ID, NotificationCompat.Builder(this, PAIR_CHANNEL_ID)
+        nm.notify(Notifications.PAIRING_ID, NotificationCompat.Builder(this, Notifications.PAIRING_CHANNEL)
             .setContentTitle(getString(R.string.notif_pair_title))
             .setContentText(getString(R.string.notif_pair_body, peerName))
             .setSmallIcon(R.drawable.ic_stat_rd2)
@@ -560,12 +548,8 @@ class RD2MacService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "rd2mac_service"
         private const val CLIP_TAG = "RD2Mac.Clip"
         private const val DISCOVERY_TAG = "RD2Mac.Discovery"
-        private const val PAIR_CHANNEL_ID = "rd2mac_pairing"
-        private const val NOTIF_ID = 1
-        const val NOTIF_PAIRING_ID = 2
         private const val CLIP_POLL_MS = 1500L
         private const val ACTION_SET_CLIPBOARD = "net.simioni.rd2mac.SET_CLIPBOARD"
         private const val ACTION_SET_PHOTO_LOCATION = "net.simioni.rd2mac.SET_PHOTO_LOCATION"

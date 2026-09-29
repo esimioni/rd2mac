@@ -1,45 +1,87 @@
 package net.simioni.rd2mac.media
 
 import android.content.ContentResolver
+import android.content.res.AssetFileDescriptor
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import net.simioni.rd2mac.net.FilePayload
+import java.io.Closeable
 import java.io.File
-import java.io.FileNotFoundException
+import java.io.IOException
 import java.io.InputStream
+
+/**
+ * A shared item, opened while the share's read grant is alive. The transfer runs after
+ * the share screen is gone — and the grant with it — but a descriptor opened before
+ * stays readable. Close it once the transfer is over.
+ */
+class SharedSource internal constructor(
+    val name: String,
+    val mime: String,
+    internal val afd: AssetFileDescriptor,
+) : Closeable {
+    override fun close() = afd.close()
+}
 
 /** Resolves shared `content://` URIs into payloads that stream from the provider — the
  *  bytes are read while they go out, never held (a 147 MB video read whole killed the
  *  app, 29/09/2026). */
 object MediaReader {
 
-    /** @param spoolDir where a stream of unknown size is copied first: the wire needs a
-     *  Content-Length, and only a provider handing out a pipe has none. */
-    fun readPayload(resolver: ContentResolver, uri: Uri, spoolDir: File): FilePayload? {
+    /** Opens [uri] now; no byte is read yet. Null when the provider refuses it. */
+    fun open(resolver: ContentResolver, uri: Uri): SharedSource? {
         val mime = resolver.getType(uri) ?: "application/octet-stream"
         val name = queryDisplayName(resolver, uri) ?: fallbackName(mime)
-        knownLength(resolver, uri)?.let { length ->
-            return FilePayload(name, mime, length) { open(resolver, uri) }
+        val afd = try {
+            resolver.openAssetFileDescriptor(uri, "r")
+        } catch (e: Exception) {
+            null
+        } ?: return null
+        return SharedSource(name, mime, afd)
+    }
+
+    /**
+     * The payload that streams [source]: straight from its descriptor when it is a file
+     * of known size — each attempt re-reads it from the start — else copied into
+     * [spoolDir] first (a pipe has neither a size for the Content-Length nor a start to
+     * go back to).
+     */
+    fun payload(source: SharedSource, spoolDir: File): FilePayload? {
+        val afd = source.afd
+        val length = afd.length                  // the file's own size when none was declared
+        if (length >= 0 && seekTo(afd.parcelFileDescriptor, afd.startOffset)) {
+            return FilePayload(source.name, source.mime, length) { reread(afd) }
         }
-        val spooled = spool(resolver, uri, spoolDir) ?: return null
-        return FilePayload(name, mime, spooled.length()) { spooled.inputStream() }
+        val spooled = spool(afd, spoolDir) ?: return null
+        return FilePayload(source.name, source.mime, spooled.length()) { spooled.inputStream() }
     }
 
-    private fun open(resolver: ContentResolver, uri: Uri): InputStream =
-        resolver.openInputStream(uri) ?: throw FileNotFoundException("no stream for $uri")
-
-    /** The content's size as the provider reports it (the file's, for MediaStore). */
-    private fun knownLength(resolver: ContentResolver, uri: Uri): Long? = try {
-        resolver.openAssetFileDescriptor(uri, "r")?.use { afd -> afd.length.takeIf { it >= 0 } }
-    } catch (e: Exception) {
-        null
+    /** A fresh stream over the same open file, from its start — the grant may be gone. */
+    private fun reread(afd: AssetFileDescriptor): InputStream {
+        val dup = afd.parcelFileDescriptor.dup()
+        if (!seekTo(dup, afd.startOffset)) {
+            dup.close()
+            throw IOException("shared file can no longer be rewound")
+        }
+        return ParcelFileDescriptor.AutoCloseInputStream(dup)
     }
 
-    private fun spool(resolver: ContentResolver, uri: Uri, dir: File): File? {
+    private fun seekTo(pfd: ParcelFileDescriptor, offset: Long): Boolean = try {
+        Os.lseek(pfd.fileDescriptor, offset, OsConstants.SEEK_SET)
+        true
+    } catch (e: ErrnoException) {
+        false
+    }
+
+    private fun spool(afd: AssetFileDescriptor, dir: File): File? {
         dir.mkdirs()
         val file = File.createTempFile("share-", ".part", dir)
         return try {
-            open(resolver, uri).use { input -> file.outputStream().use { input.copyTo(it) } }
+            afd.createInputStream().use { input -> file.outputStream().use { input.copyTo(it) } }
             file
         } catch (e: Exception) {
             file.delete()

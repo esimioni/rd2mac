@@ -93,6 +93,21 @@ class SenderTest {
         assertArrayEquals(sha256Of(PatternInputStream(length)), received)
     }
 
+    /** Progress counts the file's own bytes as they go out, up to its length. */
+    @Test fun postReportsProgressUpToThePayloadLength() {
+        val counts = mutableListOf<Long>()
+        val length = 300_000L
+        withServer({ req ->
+            WireBody(key).read(req.body, req.contentLength, DigestSink())
+            sealed200()
+        }) { port ->
+            val payload = FilePayload("p.bin", "application/octet-stream", length) { PatternInputStream(length) }
+            assertTrue(OkHttpPoster("phone", token = "tok", keyBytes = key).post(peer(port), payload) { counts += it })
+        }
+        assertEquals(length, counts.last())
+        assertEquals(counts.sorted(), counts)
+    }
+
     /** The bytes are never kept between attempts: a retry re-opens the source and
      *  delivers the whole file again. */
     @Test fun retryReopensThePayload() {
@@ -109,7 +124,7 @@ class SenderTest {
                 opens.incrementAndGet(); msg.inputStream()
             }
             val poster = OkHttpPoster("phone", token = "tok", keyBytes = key)
-            val outcome = TransferOrchestrator(RetrySender(sleeper = {}), poster::post)
+            val outcome = TransferOrchestrator(RetrySender(sleeper = {})) { peer, p, onBytes -> poster.post(peer, p, onBytes) }
                 .sendAll(peer(port), listOf(payload))
             assertEquals(1, outcome.sent)
         }

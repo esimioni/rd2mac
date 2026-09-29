@@ -3,6 +3,7 @@ package net.simioni.rd2mac.net
 import net.simioni.rd2mac.HeaderCodec
 import net.simioni.rd2mac.HeaderCrypt
 import net.simioni.rd2mac.RD2Mac
+import net.simioni.rd2mac.io.CountingInputStream
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
@@ -83,17 +84,26 @@ class RetrySender(
  */
 class TransferOrchestrator(
     private val retry: RetrySender = RetrySender(),
-    private val post: (ResolvedPeer, FilePayload) -> Boolean,
+    /** One delivery attempt; reports the file's bytes sent so far to its callback. */
+    private val post: (ResolvedPeer, FilePayload, (Long) -> Unit) -> Boolean,
 ) {
     data class Outcome(val sent: Int, val failed: Int) {
         val allSent: Boolean get() = failed == 0 && sent > 0
     }
 
-    fun sendAll(peer: ResolvedPeer, payloads: List<FilePayload>): Outcome {
+    /** [progress] gets the index of the file on the way and the batch's bytes through so
+     *  far out of its total; a retry restarts its file's share, so it can step back. */
+    fun sendAll(peer: ResolvedPeer, payloads: List<FilePayload>,
+                progress: (index: Int, done: Long, total: Long) -> Unit = { _, _, _ -> }): Outcome {
+        val total = payloads.sumOf { it.length }
+        var before = 0L
         var sent = 0
         var failed = 0
-        for (payload in payloads) {
-            if (retry.send { post(peer, payload) }) sent++ else failed++
+        payloads.forEachIndexed { index, payload ->
+            val ok = retry.send { post(peer, payload) { bytes -> progress(index, before + bytes, total) } }
+            if (ok) sent++ else failed++
+            before += payload.length
+            progress(index, before, total)
         }
         return Outcome(sent, failed)
     }
@@ -107,12 +117,12 @@ class OkHttpPoster(
     private val keyBytes: ByteArray? = null,
     private val client: OkHttpClient = RD2Http.client,
 ) {
-    fun post(peer: ResolvedPeer, payload: FilePayload): Boolean {
+    fun post(peer: ResolvedPeer, payload: FilePayload, onBytes: (Long) -> Unit = {}): Boolean {
         val host = if (peer.host.contains(":")) "[${peer.host}]" else peer.host
         val url = "http://$host:${peer.port}${RD2Mac.Path.RECEIVE}"
         val builder = Request.Builder()
             .url(url)
-            .post(WireRequestBody(payload, WireBody(keyBytes)))
+            .post(WireRequestBody(payload, WireBody(keyBytes), onBytes))
             // Filename sealed with the pairing key (S1): the peer name is public
             // Bonjour data, but filenames are content metadata.
             .header(RD2Mac.Header.FILENAME, HeaderCrypt.encode(payload.filename, keyBytes))
@@ -135,11 +145,15 @@ class OkHttpPoster(
 
 /** [payload] goes onto the socket as it is read — sealed on the fly when paired, never
  *  held. Each write re-opens the source, so OkHttp's own retries are safe too. */
-private class WireRequestBody(private val payload: FilePayload, private val wire: WireBody) : RequestBody() {
+private class WireRequestBody(
+    private val payload: FilePayload,
+    private val wire: WireBody,
+    private val onBytes: (Long) -> Unit,
+) : RequestBody() {
     override fun contentType(): MediaType? = payload.mime.toMediaTypeOrNull()
     override fun contentLength(): Long = wire.wireLength(payload.length)
     override fun writeTo(sink: BufferedSink) {
-        payload.open().use { wire.write(it, payload.length, sink.outputStream()) }
+        payload.open().use { wire.write(CountingInputStream(it, onBytes), payload.length, sink.outputStream()) }
     }
 }
 

@@ -7,17 +7,13 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import net.simioni.rd2mac.media.MediaReader
-import net.simioni.rd2mac.net.OkHttpPoster
-import net.simioni.rd2mac.net.RD2Crypto
-import net.simioni.rd2mac.net.ResolvedPeer
-import net.simioni.rd2mac.net.TransferOrchestrator
-import java.io.File
+import net.simioni.rd2mac.media.SharedSource
 
 /**
- * Share target: the phone's only "RD2Mac" entry in the share sheet. Sends the
- * shared items straight to the Mac (no device picker) and reports the REAL
- * outcome — "enviado ✓" only after HTTP 200, otherwise an explicit failure.
- * Runs translucent (no full-screen UI), just toasts and finishes.
+ * Share target: the phone's only "RD2Mac" entry in the share sheet. It only OPENS the
+ * shared items — while the share's read grant is alive — hands them to [ShareTransfers]
+ * and finishes at once, so the user is back in the app they shared from. The transfer,
+ * its progress and its real outcome ("sent ✓" only after HTTP 200) live there.
  */
 class ShareReceiverActivity : Activity() {
 
@@ -26,12 +22,12 @@ class ShareReceiverActivity : Activity() {
         RD2MacService.start(this) // ensure discovery is live even if app was never opened
 
         val uris = extractUris(intent)
-        if (uris.isEmpty()) {
-            toast(getString(R.string.share_nothing))
-            finish()
-            return
+        when {
+            uris.isEmpty() -> finishWith(getString(R.string.share_nothing))
+            RD2MacState.pairedPeer == null -> finishWith(getString(R.string.share_open_choose))
+            // Opening is provider IPC (a cloud item may even download first): off the UI thread.
+            else -> Thread { open(uris) }.start()
         }
-        Thread { handleSend(uris) }.start()
     }
 
     private fun extractUris(intent: Intent): List<Uri> = when (intent.action) {
@@ -42,64 +38,27 @@ class ShareReceiverActivity : Activity() {
         else -> emptyList()
     }
 
-    /** Runs on a bare thread: an exception escaping it kills the whole process — the
-     *  service with it — so every failure ends in a toast instead. */
-    private fun handleSend(uris: List<Uri>) {
-        val spoolDir = File(cacheDir, "share-spool/${System.nanoTime()}")
-        try {
-            send(uris, spoolDir)
+    /** Runs on a bare thread: an exception escaping it would kill the whole process —
+     *  the service with it — so every failure ends in a toast instead. */
+    private fun open(uris: List<Uri>) {
+        val sources = mutableListOf<SharedSource>()
+        val message = try {
+            uris.mapNotNullTo(sources) { MediaReader.open(contentResolver, it) }
+            if (sources.isEmpty()) getString(R.string.share_read_fail)
+            else {
+                ShareTransfers.submit(this, sources.toList())
+                getString(R.string.share_sending, sources.size)
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "share failed", e)
-            finishWith(getString(R.string.share_failed, uris.size, uris.size))
-        } finally {
-            spoolDir.deleteRecursively()
+            Log.e(ShareTransfers.TAG, "share failed", e)
+            sources.forEach { runCatching { it.close() } }
+            getString(R.string.share_failed, uris.size, uris.size)
         }
+        runOnUiThread { finishWith(message) }
     }
 
-    private fun send(uris: List<Uri>, spoolDir: File) {
-        val peer = awaitPeer(PEER_TIMEOUT_MS)
-        Log.i(TAG, "handleSend: uris=${uris.size} peer=$peer")
-        if (peer == null) {
-            finishWith(getString(
-                if (RD2MacState.pairedPeer == null) R.string.share_open_choose else R.string.share_no_mac))
-            return
-        }
-        val payloads = uris.mapNotNull { MediaReader.readPayload(contentResolver, it, spoolDir) }
-        Log.i(TAG, "payloads read=${payloads.size}")
-        if (payloads.isEmpty()) {
-            finishWith(getString(R.string.share_read_fail))
-            return
-        }
-        val poster = OkHttpPoster(peerName = deviceDisplayName(this),
-                                  token = RD2MacState.pairedPeer?.token,
-                                  keyBytes = RD2Crypto.keyBytes(RD2MacState.pairedPeer?.key))
-        val outcome = TransferOrchestrator(post = poster::post).sendAll(peer, payloads)
-        Log.i(TAG, "outcome sent=${outcome.sent} failed=${outcome.failed}")
-        finishWith(
-            if (outcome.allSent) getString(R.string.share_sent, outcome.sent)
-            else getString(R.string.share_failed, outcome.failed, payloads.size)
-        )
-    }
-
-    /** Wait briefly for discovery to resolve the Mac (phone may have just woken). */
-    private fun awaitPeer(timeoutMs: Long): ResolvedPeer? {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            RD2MacState.peer?.let { return it }
-            Thread.sleep(150)
-        }
-        return RD2MacState.peer
-    }
-
-    private fun finishWith(message: String) = runOnUiThread {
-        toast(message)
+    private fun finishWith(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         finish()
-    }
-
-    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-
-    companion object {
-        private const val PEER_TIMEOUT_MS = 6000L
-        private const val TAG = "RD2Mac.Share"
     }
 }

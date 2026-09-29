@@ -43,6 +43,9 @@
     <string name="share_read_fail">RD2Mac: não consegui ler os arquivos</string>
     <string name="share_sent">RD2Mac: enviado ✓ (%1$d)</string>
     <string name="share_failed">RD2Mac: falhou %1$d de %2$d</string>
+    <string name="share_sending">RD2Mac: enviando %1$d… (progresso nas notificações)</string>
+    <string name="transfer_sending">Enviando para o Mac</string>
+    <string name="channel_transfers">Transferências</string>
 
     <string name="notif_ready">Pronto</string>
     <string name="notif_mac">Mac: %1$s</string>

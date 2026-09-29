@@ -233,7 +233,7 @@ class MainActivity : AppCompatActivity() {
         RD2MacState.pendingPairing?.let { p ->
             RD2MacState.pendingPairing = null
             (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
-                .cancel(RD2MacService.NOTIF_PAIRING_ID)
+                .cancel(Notifications.PAIRING_ID)
             showSasDialog(p.session.sas, p.name) {
                 pairing.pair(p.id, p.name, p.session)
                 RD2MacState.pairedPeer = pairing.pairedPeer

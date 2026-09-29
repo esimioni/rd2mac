@@ -73,3 +73,17 @@ class BoundedInputStream(private val input: InputStream, private var left: Long)
 
     override fun available(): Int = minOf(input.available().toLong(), left).toInt()
 }
+
+/** Reports the running total of bytes read through it — a transfer's progress, counted
+ *  on the file's own bytes whatever the wire adds. */
+class CountingInputStream(private val input: InputStream, private val onCount: (Long) -> Unit) : InputStream() {
+    private var count = 0L
+
+    override fun read(): Int = input.read().also { if (it >= 0) onCount(++count) }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int =
+        input.read(b, off, len).also { if (it > 0) { count += it; onCount(count) } }
+
+    override fun available(): Int = input.available()
+    override fun close() = input.close()
+}

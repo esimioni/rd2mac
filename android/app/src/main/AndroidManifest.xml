@@ -17,6 +17,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- A share keeps going with the screen off: the CPU must not sleep mid-transfer. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Proximity gate: scan for the Mac's BLE beacon (never used for location). -->
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
