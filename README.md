@@ -56,8 +56,9 @@ Tests: `android/gradlew -p android testDebugUnitTest`
 
 ## Usage
 
-**Phone → Mac:** share photos/files from any app → **RD2Mac** → they land in
-`~/Downloads` on the Mac, with a "sent ✓ / failed ✗" toast.
+**Phone → Mac:** share photos/files from any app → **RD2Mac** → you are back in that
+app at once; the transfer runs in the background (progress in a notification) and the
+files land in `~/Downloads` on the Mac, with a "sent ✓ / failed ✗" toast.
 
 **Mac → phone / Mac pulls** (CLI, needs the app running):
 ```bash
