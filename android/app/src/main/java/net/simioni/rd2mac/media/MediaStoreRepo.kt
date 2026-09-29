@@ -3,13 +3,21 @@ package net.simioni.rd2mac.media
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
+import java.io.Closeable
+import java.io.InputStream
 
+/** A gallery item ready to stream: [content] yields exactly [length] bytes. Holds the
+ *  open descriptor — close it once served. */
 class ServedFile(
     val filename: String,
     val mime: String,
-    val bytes: ByteArray,
-)
+    val length: Long,
+    val content: InputStream,
+) : Closeable {
+    override fun close() = content.close()
+}
 
 /**
  * Reads the newest screenshot / gallery item from MediaStore. Backs
@@ -43,7 +51,7 @@ object MediaStoreRepo {
     }
 
     /**
-     * Reads the file the Mac will get. MediaProvider hands every app a *redacted*
+     * Opens the file the Mac will get. MediaProvider hands every app a *redacted*
      * copy of a photo — GPS Exif stripped — unless the read asks for the original,
      * and the original is only served while ACCESS_MEDIA_LOCATION is held. Both
      * halves are required: either one alone still yields a location-less file.
@@ -52,13 +60,12 @@ object MediaStoreRepo {
      * can be revoked in Settings at any moment): a photo without coordinates beats
      * a failed transfer.
      */
-    fun readBytes(resolver: ContentResolver, uri: Uri, keepLocation: Boolean): ByteArray? {
+    private fun openFile(resolver: ContentResolver, uri: Uri, keepLocation: Boolean): ParcelFileDescriptor? {
         if (keepLocation) {
-            runCatching {
-                resolver.openInputStream(MediaStore.setRequireOriginal(uri))?.use { it.readBytes() }
-            }.getOrNull()?.let { return it }
+            runCatching { resolver.openFileDescriptor(MediaStore.setRequireOriginal(uri), "r") }
+                .getOrNull()?.let { return it }
         }
-        return resolver.openInputStream(uri)?.use { it.readBytes() }
+        return resolver.openFileDescriptor(uri, "r")
     }
 
     // Generic MediaColumns — valid for both the Images and Video collections.
@@ -88,8 +95,11 @@ object MediaStoreRepo {
             val mime = c.getString(c.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE))
                 ?: "application/octet-stream"
             val uri = ContentUris.withAppendedId(collection, id)
-            val bytes = readBytes(resolver, uri, keepLocation) ?: return null
-            return ServedFile(name, mime, bytes)
+            val fd = openFile(resolver, uri, keepLocation) ?: return null
+            // One descriptor for both the size and the bytes: they cannot disagree.
+            val length = fd.statSize
+            if (length < 0) { fd.close(); return null }
+            return ServedFile(name, mime, length, ParcelFileDescriptor.AutoCloseInputStream(fd))
         }
         return null
     }

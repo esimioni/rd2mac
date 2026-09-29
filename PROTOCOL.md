@@ -79,9 +79,15 @@ The sender MUST open the body with the paired key and treat a failure as *not
 delivered* (retry) — same as any non-200.
 
 Errors: `401` (token mismatch), `413` (declared `Content-Length` beyond the
-receiver's cap — 256 MiB on Android, 4 GiB on macOS; bodies are held fully in
-memory), `400` (negative length / undecryptable body), `408` (silent client),
-`500` (write failed — the sender MUST treat this as *not delivered* and retry).
+receiver's cap — 4 GiB on both sides), `400` (negative length / undecryptable or
+truncated body), `408` (silent client), `500` (write failed — the sender MUST
+treat this as *not delivered* and retry).
+
+Memory: macOS holds a body in memory; Android **streams** it both ways (a whole
+video does not fit in an app heap). The sealed format is the same single GCM
+message — Android computes it chunk by chunk (AES-CTR + GHASH), and on receive
+writes the plaintext into a pending MediaStore entry that is published only after
+the tag verifies.
 
 Destination routing:
 - **Mac server:** everything → `~/Downloads` (de-duplicated name on collision).

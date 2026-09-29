@@ -1,8 +1,13 @@
 package net.simioni.rd2mac.http
 
+import net.simioni.rd2mac.io.BoundedInputStream
+import net.simioni.rd2mac.io.Streams
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
+import java.io.Closeable
+import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.net.BindException
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -17,6 +22,11 @@ import java.util.concurrent.Executors
  * `HTTPServer`. The handler runs on a worker thread and returns synchronously;
  * `POST /receive` persists to MediaStore before returning, so a 200 is a real
  * delivery.
+ *
+ * Bodies STREAM both ways: the handler reads the request body straight off the
+ * socket, and a response body is written straight onto it — a video never has to
+ * fit in the app heap (byte-array bodies killed the app on a 147 MB video,
+ * 29/09/2026).
  */
 class HttpServer(
     private val port: Int,
@@ -24,36 +34,64 @@ class HttpServer(
     private val readTimeoutMs: Int = 30_000,
     private val handler: (Request) -> Response,
 ) {
-    data class Request(
+    class Request(
         val method: String,
         val path: String,
         val query: Map<String, String>,
         val headers: Map<String, String>,   // lowercased keys
-        val body: ByteArray,
+        /** Declared Content-Length, already within [MAX_BODY_BYTES]. */
+        val contentLength: Long,
+        /** The body straight off the socket, ending after [contentLength] bytes — or
+         *  earlier if the client hangs up, so a consumer of the exact length must check. */
+        val body: InputStream,
     ) {
         fun header(name: String): String? = headers[name.lowercase()]
+
+        /** The whole body in memory — for small control messages (the /pair JSON);
+         *  past [limit] it is refused with 413. */
+        fun bodyBytes(limit: Int = MAX_SMALL_BODY_BYTES): ByteArray {
+            if (contentLength > limit) throw PayloadTooLarge(limit.toLong())
+            return Streams.readExactly(body, contentLength.toInt())
+        }
     }
+
+    /** A handler refuses a body too big for what it does with it → 413. */
+    class PayloadTooLarge(limit: Long) : Exception("payload exceeds $limit bytes")
 
     class Response(
         val status: Int,
         val headers: MutableMap<String, String> = mutableMapOf(),
-        val body: ByteArray = ByteArray(0),
+        val body: Body = Body.of(ByteArray(0)),
     ) {
         companion object {
-            fun text(status: Int, s: String) = Response(
-                status,
-                mutableMapOf("Content-Type" to "text/plain; charset=utf-8"),
-                s.toByteArray(Charsets.UTF_8),
-            )
+            fun text(status: Int, s: String) =
+                bytes(status, "text/plain; charset=utf-8", s.toByteArray(Charsets.UTF_8))
 
-            fun json(status: Int, s: String) = Response(
-                status,
-                mutableMapOf("Content-Type" to "application/json"),
-                s.toByteArray(Charsets.UTF_8),
-            )
+            fun json(status: Int, s: String) =
+                bytes(status, "application/json", s.toByteArray(Charsets.UTF_8))
 
             fun bytes(status: Int, mime: String, data: ByteArray, extra: Map<String, String> = emptyMap()) =
-                Response(status, (mutableMapOf("Content-Type" to mime) + extra).toMutableMap(), data)
+                Response(status, headersFor(mime, extra), Body.of(data))
+
+            /** A body of exactly [length] bytes, put on the socket by [write] as it is
+             *  produced. [source] is closed once the response is over, written or not. */
+            fun stream(status: Int, mime: String, length: Long, source: Closeable,
+                       extra: Map<String, String> = emptyMap(), write: (OutputStream) -> Unit) =
+                Response(status, headersFor(mime, extra), Body(length, source, write))
+
+            private fun headersFor(mime: String, extra: Map<String, String>) =
+                (mutableMapOf("Content-Type" to mime) + extra).toMutableMap()
+        }
+    }
+
+    /** A response body: its exact length (the Content-Length) and how to write it. */
+    class Body(val length: Long, private val source: Closeable?, private val write: (OutputStream) -> Unit) :
+        Closeable {
+        fun writeTo(out: OutputStream) = write(out)
+        override fun close() { source?.close() }
+
+        companion object {
+            fun of(bytes: ByteArray) = Body(bytes.size.toLong(), null) { it.write(bytes) }
         }
     }
 
@@ -103,21 +141,33 @@ class HttpServer(
             try {
                 s.soTimeout = readTimeoutMs
                 val response = when (val outcome = parseRequest(s.getInputStream())) {
-                    is Parse.Ok -> try {
-                        handler(outcome.request)
-                    } catch (e: Exception) {
-                        Response.text(500, "handler error: ${e.message}")
-                    }
-                    Parse.TooLarge -> Response.text(413, "payload exceeds ${MAX_BODY_BYTES} bytes")
+                    is Parse.Ok -> respond(outcome.request)
+                    Parse.TooLarge -> Response.text(413, "payload exceeds $MAX_BODY_BYTES bytes")
                     Parse.Bad -> Response.text(400, "Bad Request")
                 }
-                writeResponse(s, response)
+                response.body.use { writeResponse(s, response) }
             } catch (e: SocketTimeoutException) {
                 try { writeResponse(s, Response.text(408, "request timeout")) } catch (_: Exception) {}
             } catch (_: Exception) {
                 // client vanished mid-transfer; nothing to do
             }
         }
+    }
+
+    /** Runs the handler, then drains what it left of the body: closing a socket with
+     *  unread input resets it, and the client would see the reset, not the answer. */
+    private fun respond(request: Request): Response {
+        val response = try {
+            handler(request)
+        } catch (e: SocketTimeoutException) {
+            throw e                                         // silent client → 408
+        } catch (e: PayloadTooLarge) {
+            Response.text(413, e.message ?: "payload too large")
+        } catch (e: Exception) {
+            Response.text(500, "handler error: ${e.message}")
+        }
+        try { Streams.drain(request.body, MAX_DRAIN_BYTES) } catch (_: IOException) {}
+        return response
     }
 
     private sealed interface Parse {
@@ -158,21 +208,12 @@ class HttpServer(
             }
         }
 
-        // Parse as Long first: a declared length beyond the cap (or beyond Int)
-        // is refused before any allocation — the body is held fully in memory.
+        // Parse as Long: a declared length beyond the cap is refused before a single
+        // body byte is read.
         val declared = headers["content-length"]?.toLongOrNull() ?: 0L
         if (declared < 0) return Parse.Bad
         if (declared > MAX_BODY_BYTES) return Parse.TooLarge
-
-        val contentLength = declared.toInt()
-        val body = ByteArray(contentLength)
-        var read = 0
-        while (read < contentLength) {
-            val r = input.read(body, read, contentLength - read)
-            if (r < 0) break
-            read += r
-        }
-        return Parse.Ok(Request(method, path, query, headers, body))
+        return Parse.Ok(Request(method, path, query, headers, declared, BoundedInputStream(input, declared)))
     }
 
     private fun splitTarget(target: String): Pair<String, Map<String, String>> {
@@ -194,13 +235,13 @@ class HttpServer(
 
     private fun writeResponse(socket: Socket, response: Response) {
         val out = BufferedOutputStream(socket.getOutputStream())
-        response.headers["Content-Length"] = response.body.size.toString()
+        response.headers["Content-Length"] = response.body.length.toString()
         response.headers["Connection"] = "close"
         val head = StringBuilder("HTTP/1.1 ${response.status} ${reason(response.status)}\r\n")
         for ((k, v) in response.headers) head.append("$k: $v\r\n")
         head.append("\r\n")
         out.write(head.toString().toByteArray(Charsets.UTF_8))
-        out.write(response.body)
+        response.body.writeTo(out)
         out.flush()
     }
 
@@ -212,10 +253,15 @@ class HttpServer(
     }
 
     companion object {
-        /** Bodies are held fully in memory (2-3 copies at peak with sealing), so
-         *  the practical ceiling is the app heap — refuse anything bigger with a
-         *  clean 413 (PROTOCOL.md) instead of dying on allocation. */
-        const val MAX_BODY_BYTES = 256L * 1024 * 1024
+        /** Same cap as the Mac, so the protocol has one number (PROTOCOL.md). Bodies
+         *  stream to storage here, so it bounds a transfer, not the heap. */
+        const val MAX_BODY_BYTES = 4L * 1024 * 1024 * 1024
+        /** Bodies read whole into memory ([Request.bodyBytes]): control JSON, a few
+         *  hundred bytes in practice. */
+        const val MAX_SMALL_BODY_BYTES = 64 * 1024
+        /** How much of an unread body is still consumed so the client gets the answer;
+         *  past it the connection is just closed. */
+        const val MAX_DRAIN_BYTES = 16L * 1024 * 1024
         /** No legitimate RD2Mac request carries more than a few hundred header bytes. */
         const val MAX_HEADER_BYTES = 64 * 1024
     }

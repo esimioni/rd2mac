@@ -1,6 +1,5 @@
 package net.simioni.rd2mac
 
-import net.simioni.rd2mac.net.FilePayload
 import net.simioni.rd2mac.net.ResolvedPeer
 import net.simioni.rd2mac.net.RetrySender
 import net.simioni.rd2mac.net.TransferOrchestrator
@@ -13,7 +12,7 @@ class TransferOrchestratorTest {
 
     private val peer = ResolvedPeer("mac-1", "Mac", "127.0.0.1", 53318, Platform.MACOS)
     private val noDelay = RetrySender(maxAttempts = 3, sleeper = {})
-    private fun payload(name: String) = FilePayload(name, "image/jpeg", ByteArray(3))
+    private fun payload(name: String) = bytesPayload(name, "image/jpeg", ByteArray(3))
 
     @Test fun allSucceed() {
         val orch = TransferOrchestrator(noDelay) { _, _ -> true }

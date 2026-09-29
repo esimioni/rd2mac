@@ -82,19 +82,27 @@ object RD2Crypto {
         return Session(keyBytes, token, "%06d".format(n % 1_000_000L))
     }
 
+    /** Wire format of a sealed body: nonce ‖ ciphertext ‖ tag. */
+    const val NONCE_BYTES = 12
+    const val TAG_BYTES = 16
+
+    fun newNonce(): ByteArray = ByteArray(NONCE_BYTES).also { SecureRandom().nextBytes(it) }
+
+    /** One-shot, whole message in memory — for small bodies (headers, clipboard, the
+     *  sealed /receive reply). File bodies stream through [GcmStream]: same wire bytes. */
     fun seal(plaintext: ByteArray, keyBytes: ByteArray): ByteArray {
-        val nonce = ByteArray(12).also { SecureRandom().nextBytes(it) }
+        val nonce = newNonce()
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyBytes, "AES"), GCMParameterSpec(128, nonce))
-        return nonce + cipher.doFinal(plaintext)   // nonce ‖ ciphertext ‖ tag
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyBytes, "AES"), GCMParameterSpec(TAG_BYTES * 8, nonce))
+        return nonce + cipher.doFinal(plaintext)
     }
 
     fun open(blob: ByteArray, keyBytes: ByteArray): ByteArray {
-        require(blob.size >= 12 + 16) { "bad ciphertext" }
+        require(blob.size >= NONCE_BYTES + TAG_BYTES) { "bad ciphertext" }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"),
-            GCMParameterSpec(128, blob.copyOfRange(0, 12)))
-        return cipher.doFinal(blob.copyOfRange(12, blob.size))
+            GCMParameterSpec(TAG_BYTES * 8, blob.copyOfRange(0, NONCE_BYTES)))
+        return cipher.doFinal(blob.copyOfRange(NONCE_BYTES, blob.size))
     }
 
     /** RFC 5869 HKDF-SHA256 (extract + expand). */

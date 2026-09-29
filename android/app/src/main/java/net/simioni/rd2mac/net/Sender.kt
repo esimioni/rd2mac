@@ -3,10 +3,14 @@ package net.simioni.rd2mac.net
 import net.simioni.rd2mac.HeaderCodec
 import net.simioni.rd2mac.HeaderCrypt
 import net.simioni.rd2mac.RD2Mac
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
+import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
 /**
@@ -37,10 +41,14 @@ object RD2Http {
         }
 }
 
+/** One file to send. Its bytes are never held: [open] yields a fresh stream of exactly
+ *  [length] bytes for every attempt (a retry re-opens it), so a video bigger than the
+ *  heap goes through. */
 class FilePayload(
     val filename: String,
     val mime: String,
-    val bytes: ByteArray,
+    val length: Long,
+    val open: () -> InputStream,
 )
 
 /**
@@ -102,11 +110,9 @@ class OkHttpPoster(
     fun post(peer: ResolvedPeer, payload: FilePayload): Boolean {
         val host = if (peer.host.contains(":")) "[${peer.host}]" else peer.host
         val url = "http://$host:${peer.port}${RD2Mac.Path.RECEIVE}"
-        val bytes = keyBytes?.let { RD2Crypto.seal(payload.bytes, it) } ?: payload.bytes
-        val body = bytes.toRequestBody(payload.mime.toMediaTypeOrNull())
         val builder = Request.Builder()
             .url(url)
-            .post(body)
+            .post(WireRequestBody(payload, WireBody(keyBytes)))
             // Filename sealed with the pairing key (S1): the peer name is public
             // Bonjour data, but filenames are content metadata.
             .header(RD2Mac.Header.FILENAME, HeaderCrypt.encode(payload.filename, keyBytes))
@@ -124,6 +130,16 @@ class OkHttpPoster(
         val key = keyBytes ?: return true    // unpaired legacy path: nothing to verify against
         if (body == null) return false
         return try { RD2Crypto.open(body, key); true } catch (e: Exception) { false }
+    }
+}
+
+/** [payload] goes onto the socket as it is read — sealed on the fly when paired, never
+ *  held. Each write re-opens the source, so OkHttp's own retries are safe too. */
+private class WireRequestBody(private val payload: FilePayload, private val wire: WireBody) : RequestBody() {
+    override fun contentType(): MediaType? = payload.mime.toMediaTypeOrNull()
+    override fun contentLength(): Long = wire.wireLength(payload.length)
+    override fun writeTo(sink: BufferedSink) {
+        payload.open().use { wire.write(it, payload.length, sink.outputStream()) }
     }
 }
 

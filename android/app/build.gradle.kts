@@ -58,6 +58,11 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    testOptions {
+        // A small heap, closer to the phone's app heap: the "bigger than the heap"
+        // streaming tests size their bodies from it, and stay fast.
+        unitTests.all { it.maxHeapSize = "128m" }
+    }
 }
 
 dependencies {

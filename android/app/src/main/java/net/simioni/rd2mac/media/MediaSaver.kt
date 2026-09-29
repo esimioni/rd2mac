@@ -6,6 +6,7 @@ import android.provider.MediaStore
 import net.simioni.rd2mac.FileNaming
 import net.simioni.rd2mac.SaveDestination
 import net.simioni.rd2mac.SaveRouting
+import java.io.OutputStream
 
 /**
  * Saves a file received from the Mac into MediaStore (scoped storage). Per
@@ -14,8 +15,13 @@ import net.simioni.rd2mac.SaveRouting
  */
 object MediaSaver {
 
-    /** @return the saved content URI as a string, or null on failure. */
-    fun save(resolver: ContentResolver, filename: String, mime: String, bytes: ByteArray): String? {
+    /**
+     * Streams a received file in: [write] fills a PENDING entry (hidden from the gallery),
+     * published only once [write] returns. Any exception — bad tag, body cut short, disk
+     * full — deletes the entry and propagates, so a half-written or forged file never
+     * shows up. @return the saved content URI, or null when MediaStore refused the entry.
+     */
+    fun save(resolver: ContentResolver, filename: String, mime: String, write: (OutputStream) -> Unit): String? {
         val name = FileNaming.sanitize(filename)
         val (collection, relativePath) = when (SaveRouting.destinationFor(mime)) {
             SaveDestination.GALLERY ->
@@ -36,13 +42,14 @@ object MediaSaver {
 
         val uri = resolver.insert(collection, values) ?: return null
         try {
-            resolver.openOutputStream(uri)?.use { it.write(bytes) } ?: run {
+            val out = resolver.openOutputStream(uri) ?: run {
                 resolver.delete(uri, null, null)
                 return null
             }
+            out.use(write)
         } catch (e: Exception) {
             resolver.delete(uri, null, null)
-            return null
+            throw e
         }
 
         values.clear()

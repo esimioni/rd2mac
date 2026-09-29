@@ -11,6 +11,7 @@ import net.simioni.rd2mac.net.OkHttpPoster
 import net.simioni.rd2mac.net.RD2Crypto
 import net.simioni.rd2mac.net.ResolvedPeer
 import net.simioni.rd2mac.net.TransferOrchestrator
+import java.io.File
 
 /**
  * Share target: the phone's only "RD2Mac" entry in the share sheet. Sends the
@@ -41,7 +42,21 @@ class ShareReceiverActivity : Activity() {
         else -> emptyList()
     }
 
+    /** Runs on a bare thread: an exception escaping it kills the whole process — the
+     *  service with it — so every failure ends in a toast instead. */
     private fun handleSend(uris: List<Uri>) {
+        val spoolDir = File(cacheDir, "share-spool/${System.nanoTime()}")
+        try {
+            send(uris, spoolDir)
+        } catch (e: Exception) {
+            Log.e(TAG, "share failed", e)
+            finishWith(getString(R.string.share_failed, uris.size, uris.size))
+        } finally {
+            spoolDir.deleteRecursively()
+        }
+    }
+
+    private fun send(uris: List<Uri>, spoolDir: File) {
         val peer = awaitPeer(PEER_TIMEOUT_MS)
         Log.i(TAG, "handleSend: uris=${uris.size} peer=$peer")
         if (peer == null) {
@@ -49,7 +64,7 @@ class ShareReceiverActivity : Activity() {
                 if (RD2MacState.pairedPeer == null) R.string.share_open_choose else R.string.share_no_mac))
             return
         }
-        val payloads = uris.mapNotNull { MediaReader.readPayload(contentResolver, it) }
+        val payloads = uris.mapNotNull { MediaReader.readPayload(contentResolver, it, spoolDir) }
         Log.i(TAG, "payloads read=${payloads.size}")
         if (payloads.isEmpty()) {
             finishWith(getString(R.string.share_read_fail))

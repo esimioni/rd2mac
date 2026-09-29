@@ -42,7 +42,10 @@ import net.simioni.rd2mac.net.PairingStore
 import net.simioni.rd2mac.net.PeerSelection
 import net.simioni.rd2mac.net.RD2Crypto
 import net.simioni.rd2mac.net.ResolvedPeer
+import net.simioni.rd2mac.net.WireBody
 import org.json.JSONObject
+import java.io.EOFException
+import java.security.GeneralSecurityException
 
 /** Live service state, observed by the UI (same process, personal use). */
 object RD2MacState {
@@ -349,8 +352,9 @@ class RD2MacService : Service() {
     /** A Mac initiated pairing: accept if free (or same peer re-pairing), adopt its
      *  token, and persist. Reject a hijack of an existing pairing (403). */
     private fun handlePair(request: HttpServer.Request): HttpServer.Response {
+        val raw = request.bodyBytes()   // oversized/stalled body → the server's 413/408
         val body = try {
-            JSONObject(String(request.body, Charsets.UTF_8))
+            JSONObject(String(raw, Charsets.UTF_8))
         } catch (e: Exception) {
             return HttpServer.Response.text(400, "bad pair request")
         }
@@ -381,34 +385,43 @@ class RD2MacService : Service() {
         return HttpServer.Response.json(200, reply)
     }
 
+    /** Streams the item straight from MediaStore to the socket, sealed on the way. */
     private fun serveFile(file: ServedFile?): HttpServer.Response {
         if (file == null) return HttpServer.Response.text(404, "no media found")
-        return HttpServer.Response.bytes(
-            200, file.mime, encryptBody(file.bytes),
-            mapOf(RD2Mac.Header.FILENAME to HeaderCrypt.encode(file.filename, keyBytes())),
-        )
+        val key = keyBytes()
+        val wire = WireBody(key)
+        return HttpServer.Response.stream(
+            200, file.mime, wire.wireLength(file.length), source = file,
+            extra = mapOf(RD2Mac.Header.FILENAME to HeaderCrypt.encode(file.filename, key)),
+        ) { out -> wire.write(file.content, file.length, out) }
     }
 
+    /** Streams the body into a pending MediaStore entry, opened on the way; the entry
+     *  is published only after the GCM tag checks out. */
     private fun handleReceive(request: HttpServer.Request): HttpServer.Response {
         val name = request.header(RD2Mac.Header.FILENAME)?.let { HeaderCrypt.decode(it, keyBytes()) }
             ?: "rd2mac-file"
         val mime = request.header("Content-Type") ?: "application/octet-stream"
-        val plain = decryptBody(request.body) ?: return HttpServer.Response.text(400, "decrypt failed")
-        val saved = MediaSaver.save(contentResolver, name, mime, plain)
-        if (saved == null) return HttpServer.Response.text(500, "save failed")
+        val wire = WireBody(keyBytes())
+        var bytes = 0L
+        val saved = try {
+            MediaSaver.save(contentResolver, name, mime) { out ->
+                bytes = wire.read(request.body, request.contentLength, out)
+            }
+        } catch (e: GeneralSecurityException) {
+            return HttpServer.Response.text(400, "decrypt failed")
+        } catch (e: EOFException) {
+            return HttpServer.Response.text(400, "body shorter than its Content-Length")
+        } ?: return HttpServer.Response.text(500, "save failed")
         // Sealed response: proves to the sender WE hold the pairing key — a bare
         // 200 could be forged by an active MITM that never persisted anything.
-        val result = JSONObject().put("saved", saved).put("bytes", plain.size).toString()
+        val result = JSONObject().put("saved", saved).put("bytes", bytes).toString()
         return HttpServer.Response.bytes(
             200, "application/octet-stream", encryptBody(result.toByteArray(Charsets.UTF_8)))
     }
 
     // Body encryption with the paired peer's AES key (no key ⇒ passthrough).
     private fun keyBytes(): ByteArray? = RD2Crypto.keyBytes(RD2MacState.pairedPeer?.key)
-    private fun decryptBody(data: ByteArray): ByteArray? {
-        val key = keyBytes() ?: return data
-        return try { RD2Crypto.open(data, key) } catch (e: Exception) { null }
-    }
     private fun encryptBody(data: ByteArray): ByteArray {
         val key = keyBytes() ?: return data
         return RD2Crypto.seal(data, key)
