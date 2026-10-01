@@ -42,6 +42,8 @@ import net.simioni.rd2mac.net.PeerSelection
 import net.simioni.rd2mac.net.RD2Crypto
 import net.simioni.rd2mac.net.ResolvedPeer
 import net.simioni.rd2mac.net.WireBody
+import net.simioni.rd2mac.update.AppUpdater
+import net.simioni.rd2mac.update.TransferActivity
 import org.json.JSONObject
 import java.io.EOFException
 import java.security.GeneralSecurityException
@@ -133,6 +135,7 @@ class RD2MacService : Service() {
             RD2MacState.notifyChange()
             if (pairing.receiveClipboard) startClipboardPolling()
             updateProximityMonitor()
+            AppUpdater.start(this)
         }
         when (intent?.action) {
             ACTION_SET_CLIPBOARD -> {
@@ -314,7 +317,8 @@ class RD2MacService : Service() {
     // MARK: server
 
     private fun startServer() {
-        server = HttpServer(RD2Mac.DEFAULT_PORT) { request -> route(request) }
+        server = HttpServer(RD2Mac.DEFAULT_PORT, activity = TransferActivity.shared,
+                            tracks = ::isPhoneTransfer) { request -> route(request) }
         server.start()
     }
 

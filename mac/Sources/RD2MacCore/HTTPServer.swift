@@ -66,6 +66,9 @@ public final class HTTPServer {
     /// Cut a connection that has gone silent mid-request, so a stalled client
     /// can't pin its buffer forever. Reset on every received chunk.
     private let idleTimeout: TimeInterval
+    /// Where the requests `tracks` picks count as transfers in flight (self-update waits).
+    private let activity: TransferActivity?
+    private let tracks: (_ method: String, _ path: String) -> Bool
     private let queue = DispatchQueue(label: "net.simioni.rd2mac.httpserver")
     private var listener: NWListener?
     private var connCounter = 0
@@ -75,11 +78,17 @@ public final class HTTPServer {
 
     /// - Parameter loopbackOnly: bind to 127.0.0.1 only. Used by the control
     ///   server so the CLI (and only local processes) can drive pull/send.
+    /// - Parameter tracks: which requests are file transfers, counted in `activity`
+    ///   from their request line (the body may take minutes) until the reply is sent.
     public init(port: UInt16, loopbackOnly: Bool = false, idleTimeout: TimeInterval = 60,
+                activity: TransferActivity? = nil,
+                tracks: @escaping (_ method: String, _ path: String) -> Bool = { _, _ in false },
                 handler: @escaping Handler) {
         self.requestedPort = port
         self.loopbackOnly = loopbackOnly
         self.idleTimeout = idleTimeout
+        self.activity = activity
+        self.tracks = tracks
         self.handler = handler
     }
 
@@ -122,10 +131,30 @@ public final class HTTPServer {
         connCounter += 1
         let connQueue = DispatchQueue(label: "net.simioni.rd2mac.conn.\(connCounter)")
         conn.start(queue: connQueue)
-        receiveLoop(conn, buffer: Data(), queue: connQueue)
+        receiveLoop(conn, buffer: Data(), queue: connQueue, tracking: Tracking(activity))
     }
 
-    private func receiveLoop(_ conn: NWConnection, buffer: Data, queue connQueue: DispatchQueue) {
+    /// One connection's mark in `activity`: on once its request line shows a tracked
+    /// route, off when the reply is sent or the connection drops. Touched only on the
+    /// connection's own queue.
+    private final class Tracking {
+        private let activity: TransferActivity?
+        private(set) var isActive = false
+        init(_ activity: TransferActivity?) { self.activity = activity }
+        func begin() {
+            guard !isActive, let activity else { return }
+            isActive = true
+            activity.begin()
+        }
+        func end() {
+            guard isActive else { return }
+            isActive = false
+            activity?.end()
+        }
+    }
+
+    private func receiveLoop(_ conn: NWConnection, buffer: Data, queue connQueue: DispatchQueue,
+                             tracking: Tracking) {
         // (Re)arm the idle watchdog: a client that stops sending mid-request is
         // dropped instead of holding the buffer until process exit.
         let watchdog = DispatchWorkItem { conn.cancel() }
@@ -133,35 +162,52 @@ public final class HTTPServer {
 
         conn.receive(minimumIncompleteLength: 1, maximumLength: 1 << 16) { [weak self] data, _, isComplete, error in
             watchdog.cancel()
-            guard let self else { conn.cancel(); return }
+            guard let self else { tracking.end(); conn.cancel(); return }
             var buf = buffer
             if let data, !data.isEmpty { buf.append(data) }
 
-            if error != nil { conn.cancel(); return }
+            if error != nil { tracking.end(); conn.cancel(); return }
 
+            if !tracking.isActive, let line = HTTPServer.requestLine(buf), self.tracks(line.method, line.path) {
+                tracking.begin()
+            }
             switch HTTPServer.parse(buf) {
             case .done(let request):
                 let response = self.handler(request)
-                self.send(response, on: conn)
+                self.send(response, on: conn, tracking: tracking)
             case .bad(let reason):
-                self.send(.text(400, "Bad Request: \(reason)"), on: conn)
+                self.send(.text(400, "Bad Request: \(reason)"), on: conn, tracking: tracking)
             case .tooLarge:
-                self.send(.text(413, "payload exceeds \(HTTPServer.maxBodyBytes) bytes"), on: conn)
+                self.send(.text(413, "payload exceeds \(HTTPServer.maxBodyBytes) bytes"), on: conn,
+                          tracking: tracking)
             case .need:
-                if isComplete { conn.cancel() } // closed mid-request
-                else { self.receiveLoop(conn, buffer: buf, queue: connQueue) }
+                if isComplete { tracking.end(); conn.cancel() } // closed mid-request
+                else { self.receiveLoop(conn, buffer: buf, queue: connQueue, tracking: tracking) }
             }
         }
     }
 
-    private func send(_ response: HTTPResponse, on conn: NWConnection) {
+    private func send(_ response: HTTPResponse, on conn: NWConnection, tracking: Tracking) {
         let data = HTTPServer.serialize(response)
-        conn.send(content: data, completion: .contentProcessed { _ in conn.cancel() })
+        conn.send(content: data, completion: .contentProcessed { _ in
+            conn.cancel()
+            tracking.end()
+        })
     }
 
     // MARK: - Parsing
 
     enum ParseResult { case need, done(HTTPRequest), bad(String), tooLarge }
+
+    /// Method and path of the request line as soon as that line has arrived — long
+    /// before a big body has. Nil while it is still incomplete.
+    static func requestLine(_ buffer: Data) -> (method: String, path: String)? {
+        guard let lineEnd = buffer.range(of: Data("\r\n".utf8)) else { return nil }
+        let line = String(decoding: buffer[buffer.startIndex..<lineEnd.lowerBound], as: UTF8.self)
+        let parts = line.split(separator: " ", maxSplits: 2).map(String.init)
+        guard parts.count >= 2 else { return nil }
+        return (parts[0].uppercased(), splitTarget(parts[1]).0)
+    }
 
     static func parse(_ buffer: Data) -> ParseResult {
         let separator = Data("\r\n\r\n".utf8)

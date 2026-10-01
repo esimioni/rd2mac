@@ -92,8 +92,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let port = RD2Mac.defaultPort
     private let services = ServiceProvider()
     private let proximity = ProximityAdvertiser()
+    private var updater: Updater?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // A self-update relaunched this copy while the old one still holds the ports:
+        // finish launching (the old one quits once the system reports us up), then
+        // start for real once it is gone.
+        if let pid = RelaunchWait.pid(from: CommandLine.arguments) {
+            RelaunchWait.whenExited(pid) { [weak self] in Task { @MainActor in self?.startUp() } }
+        } else {
+            startUp()
+        }
+    }
+
+    @MainActor private func startUp() {
         setupStatusItem()
         startServer()
         startControl()
@@ -101,6 +113,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startServicesProvider()
         proximity.start()   // BLE beacon for the phone's proximity gate
         enableFinderExtensionOnce()
+        updater = Updater()
+        updater?.start()
         // Let the first launch settle (and the system's Local Network prompt land)
         // before asking anything of the user.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
@@ -220,7 +234,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self?.rebuildMenu()
                 }
             })
-        server = HTTPServer(port: port, handler: makeMacRouter(config: config))
+        server = HTTPServer(port: port, activity: .shared, tracks: isMacTransfer,
+                            handler: makeMacRouter(config: config))
         do {
             try server.start()
         } catch {

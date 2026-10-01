@@ -46,6 +46,9 @@
     <string name="share_sending">RD2Mac: enviando %1$d… (progresso nas notificações)</string>
     <string name="transfer_sending">Enviando para o Mac</string>
     <string name="channel_transfers">Transferências</string>
+    <string name="channel_updates">Atualizações</string>
+    <string name="update_ready_title">Atualização do RD2Mac pronta</string>
+    <string name="update_ready_text">Toque para instalar a versão %1$s</string>
 
     <string name="notif_ready">Pronto</string>
     <string name="notif_mac">Mac: %1$s</string>

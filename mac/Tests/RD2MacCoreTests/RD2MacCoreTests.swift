@@ -893,6 +893,276 @@ final class ControlClientTests: XCTestCase {
     }
 }
 
+/// Self-update: what the feed says, which version wins, when to look, when to swap.
+final class UpdateFeedTests: XCTestCase {
+
+    /// The shape GitHub returned for v0.5 (01/10/2026), trimmed to what the apps read.
+    private func feed(tag: String = "v0.5", asset: String = "RD2Mac.dmg",
+                      digest: String? = "sha256:677ACCF633B905BEA7AE684632EF49FB3BF47ACEE8C4A0EF0E9FC87206F5B3CC",
+                      prerelease: Bool = false) -> Data {
+        let digestField = digest.map { "\"digest\": \"\($0)\"," } ?? ""
+        return Data("""
+        {"tag_name": "\(tag)", "name": "RD2Mac 0.5", "draft": false, "prerelease": \(prerelease),
+         "assets": [
+          {"name": "RD2Mac.apk", "size": 11056702,
+           "digest": "sha256:9a493e80e61e4ed298dbaeaeb6e8de4140a1dc39bbdae413868d1da2786fd6ef",
+           "browser_download_url": "https://github.com/esimioni/rd2mac/releases/download/v0.5/RD2Mac.apk"},
+          {"name": "\(asset)", "size": 2232313, \(digestField)
+           "browser_download_url": "https://github.com/esimioni/rd2mac/releases/download/v0.5/\(asset)"}
+         ]}
+        """.utf8)
+    }
+
+    func testReadsTheMacAssetOfTheLatestRelease() {
+        XCTAssertEqual(UpdateFeed.parse(feed(), asset: UpdateFeed.macAsset), Release(
+            version: "0.5",
+            assetURL: URL(string: "https://github.com/esimioni/rd2mac/releases/download/v0.5/RD2Mac.dmg")!,
+            size: 2232313,
+            sha256: "677accf633b905bea7ae684632ef49fb3bf47acee8c4a0ef0e9fc87206f5b3cc"))
+    }
+
+    func testNoAssetNoPrereleaseNoGarbage() {
+        XCTAssertNil(UpdateFeed.parse(feed(asset: "RD2Mac.zip"), asset: UpdateFeed.macAsset))
+        XCTAssertNil(UpdateFeed.parse(feed(prerelease: true), asset: UpdateFeed.macAsset))
+        XCTAssertNil(UpdateFeed.parse(Data("{\"message\": \"Not Found\"}".utf8), asset: UpdateFeed.macAsset))
+        XCTAssertNil(UpdateFeed.parse(Data("<html>".utf8), asset: UpdateFeed.macAsset))
+    }
+
+    func testOnlyAWellFormedSha256DigestIsKept() {
+        XCTAssertNil(UpdateFeed.parse(feed(digest: nil), asset: UpdateFeed.macAsset)?.sha256)
+        XCTAssertNil(UpdateFeed.parse(feed(digest: "md5:0123"), asset: UpdateFeed.macAsset)?.sha256)
+        XCTAssertNil(UpdateFeed.parse(feed(digest: "sha256:xyz"), asset: UpdateFeed.macAsset)?.sha256)
+        XCTAssertEqual(UpdateFeed.parse(feed(tag: "0.7"), asset: UpdateFeed.macAsset)?.version, "0.7")
+    }
+
+    func testOnlyAHigherVersionIsNewer() {
+        XCTAssertTrue(AppVersion.isNewer("0.6", than: "0.5"))
+        XCTAssertTrue(AppVersion.isNewer("0.10", than: "0.9"))        // numeric, not text
+        XCTAssertTrue(AppVersion.isNewer("1.0", than: "0.9.9"))
+        XCTAssertFalse(AppVersion.isNewer("0.5", than: "0.5"))
+        XCTAssertFalse(AppVersion.isNewer("0.6.0", than: "0.6"))
+        XCTAssertFalse(AppVersion.isNewer("0.4", than: "0.5"))        // never a downgrade
+    }
+
+    func testAnUnreadableVersionNeverTriggersAnUpdate() {
+        XCTAssertFalse(AppVersion.isNewer("0.6-beta", than: "0.5"))
+        XCTAssertFalse(AppVersion.isNewer("", than: "0.5"))
+        XCTAssertFalse(AppVersion.isNewer("1..0", than: "0.5"))
+        XCTAssertFalse(AppVersion.isNewer("+1.0", than: "0.5"))
+        XCTAssertFalse(AppVersion.isNewer("0.6", than: "dev"))
+    }
+
+    func testARejectedReleaseIsNotFetchedAgain() {
+        XCTAssertTrue(UpdatePolicy.wants("0.6", installed: "0.5", rejected: nil))
+        XCTAssertFalse(UpdatePolicy.wants("0.6", installed: "0.5", rejected: "0.6"))   // already turned down
+        XCTAssertTrue(UpdatePolicy.wants("0.7", installed: "0.5", rejected: "0.6"))    // a new release is looked at
+        XCTAssertFalse(UpdatePolicy.wants("0.5", installed: "0.5", rejected: nil))
+    }
+
+    func testOneCheckADay() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(UpdateSchedule.isDue(lastCheck: nil, now: now))
+        XCTAssertFalse(UpdateSchedule.isDue(lastCheck: now.addingTimeInterval(-(24 * 3600 - 60)), now: now))
+        XCTAssertTrue(UpdateSchedule.isDue(lastCheck: now.addingTimeInterval(-24 * 3600), now: now))
+        // A clock set back behind the last check must not silence updates for good.
+        XCTAssertTrue(UpdateSchedule.isDue(lastCheck: now.addingTimeInterval(3600), now: now))
+    }
+}
+
+final class TransferActivityTests: XCTestCase {
+
+    func testQuietOnlyWhenNothingMovedForTheQuietPeriod() {
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        let activity = TransferActivity(now: { now })
+        XCTAssertTrue(activity.isQuiet)                         // nothing ever moved
+        activity.begin()
+        XCTAssertFalse(activity.isQuiet)
+        activity.begin()                                        // two at once
+        activity.end()
+        XCTAssertFalse(activity.isQuiet)                        // one still going
+        activity.end()
+        XCTAssertFalse(activity.isQuiet)                        // a batch's next file may follow
+        now = now.addingTimeInterval(TransferActivity.quietPeriod - 1)
+        XCTAssertFalse(activity.isQuiet)
+        now = now.addingTimeInterval(1)
+        XCTAssertTrue(activity.isQuiet)
+    }
+
+    func testATransferThatThrowsStillEnds() {
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        let activity = TransferActivity(now: { now })
+        XCTAssertThrowsError(try activity.track { throw RD2MacError.peerNotFound })
+        now = now.addingTimeInterval(TransferActivity.quietPeriod)
+        XCTAssertTrue(activity.isQuiet)                         // not stuck "in flight"
+    }
+}
+
+final class TransferTrackingTests: XCTestCase {
+
+    func testTheRequestLineIsReadBeforeTheBodyArrives() {
+        XCTAssertNil(HTTPServer.requestLine(Data("POST /rece".utf8)))
+        let line = HTTPServer.requestLine(Data("post /receive?x=1 HTTP/1.1\r\nContent-Le".utf8))
+        XCTAssertEqual(line?.method, "POST")
+        XCTAssertEqual(line?.path, "/receive")
+    }
+
+    func testOnlyATrackedRequestIsATransferAndOnlyUntilItsReplyIsSent() throws {
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        let activity = TransferActivity(now: { now })
+        let lock = NSLock()
+        var quietDuring: [String: Bool] = [:]
+        let server = HTTPServer(port: 0, loopbackOnly: true, activity: activity, tracks: isMacTransfer) { request in
+            lock.lock(); quietDuring[request.path] = activity.isQuiet; lock.unlock()
+            return .text(200, "ok")
+        }
+        try server.start()
+        defer { server.stop() }
+        let port = try XCTUnwrap(waitForBoundPortSync(server))
+
+        // The ping first: right after an upload, the quiet period would still be running.
+        for (method, path) in [("GET", RD2Mac.Path.ping), ("POST", RD2Mac.Path.receive)] {
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)\(path)")!)
+            request.httpMethod = method
+            if method == "POST" { request.httpBody = Data(repeating: 7, count: 200_000) }
+            let done = expectation(description: path)
+            URLSession.shared.dataTask(with: request) { _, _, _ in done.fulfill() }.resume()
+            wait(for: [done], timeout: 5)
+        }
+
+        lock.lock(); defer { lock.unlock() }
+        XCTAssertEqual(quietDuring[RD2Mac.Path.receive], false)   // the upload is a transfer
+        XCTAssertEqual(quietDuring[RD2Mac.Path.ping], true)       // a ping is not
+        now = now.addingTimeInterval(TransferActivity.quietPeriod)
+        let deadline = Date().addingTimeInterval(2)               // the reply's send completes async
+        while !activity.isQuiet, Date() < deadline { usleep(20_000) }
+        XCTAssertTrue(activity.isQuiet)
+    }
+}
+
+final class SelfInstallTests: XCTestCase {
+
+    func testSha256OfAFile() throws {
+        let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("abc")
+        try Data("abc".utf8).write(to: file)
+        XCTAssertEqual(try FileDigest.sha256(of: file),
+                       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    }
+
+    func testOnlyAnIntactBundleSignedLikeTheRequirementPasses() throws {
+        let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let signed = try makeBundle(in: dir, name: "Signed", sign: true)
+        let other = try makeBundle(in: dir, name: "Other", sign: true)
+        let unsigned = try makeBundle(in: dir, name: "Unsigned", sign: false)
+        let requirement = try XCTUnwrap(CodeIdentity.designatedRequirement(of: signed))
+
+        XCTAssertTrue(CodeIdentity.isValid(signed, satisfying: requirement))
+        XCTAssertFalse(CodeIdentity.isValid(other, satisfying: requirement))      // someone else's build
+        XCTAssertFalse(CodeIdentity.isValid(unsigned, satisfying: requirement))
+
+        // A byte changed after signing: the seal no longer matches.
+        let exe = signed.appendingPathComponent("Contents/MacOS/Signed")
+        let handle = try FileHandle(forWritingTo: exe)
+        try handle.seekToEnd(); try handle.write(contentsOf: Data([0])); try handle.close()
+        XCTAssertFalse(CodeIdentity.isValid(signed, satisfying: requirement))
+    }
+
+    func testSwapPutsTheNewBundleInPlaceAndKeepsTheOldAside() throws {
+        let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let current = try makeMarkedDir(dir.appendingPathComponent("RD2Mac.app"), "old")
+        let staged = try makeMarkedDir(dir.appendingPathComponent("staging/RD2Mac.app"), "new")
+
+        let aside = try BundleSwap.replace(current, with: staged)
+
+        XCTAssertEqual(try marker(current), "new")
+        XCTAssertEqual(try marker(aside), "old")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staged.path))
+        BundleSwap.removeLeftovers(beside: current)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: aside.path))
+        XCTAssertEqual(try marker(current), "new")
+    }
+
+    func testAFailedSwapPutsTheOldBundleBack() throws {
+        let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let current = try makeMarkedDir(dir.appendingPathComponent("RD2Mac.app"), "old")
+        let missing = dir.appendingPathComponent("staging/RD2Mac.app")
+
+        XCTAssertThrowsError(try BundleSwap.replace(current, with: missing))
+
+        XCTAssertEqual(try marker(current), "old")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), ["RD2Mac.app"])
+    }
+
+    func testTheRelaunchedAppReadsWhichProcessToWaitFor() {
+        XCTAssertEqual(RelaunchWait.pid(from: ["RD2Mac", RelaunchWait.argument, "4242"]), 4242)
+        XCTAssertNil(RelaunchWait.pid(from: ["RD2Mac"]))
+        XCTAssertNil(RelaunchWait.pid(from: ["RD2Mac", RelaunchWait.argument]))
+        XCTAssertNil(RelaunchWait.pid(from: ["RD2Mac", RelaunchWait.argument, "x"]))
+        XCTAssertNil(RelaunchWait.pid(from: ["RD2Mac", RelaunchWait.argument, "0"]))
+    }
+
+    func testTheRelaunchedAppStartsOnceTheOldOneIsGone() throws {
+        let old = Process()
+        old.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        old.arguments = ["0.3"]
+        try old.run()
+        let started = expectation(description: "start")
+        var oldWasGone = false
+        RelaunchWait.whenExited(old.processIdentifier, timeout: 5) {
+            oldWasGone = !old.isRunning
+            started.fulfill()
+        }
+        wait(for: [started], timeout: 3)    // well before the 5 s timeout
+        XCTAssertTrue(oldWasGone)
+    }
+
+    func testTheRelaunchedAppStartsAnywayAfterTheTimeout() throws {
+        let stuck = Process()
+        stuck.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        stuck.arguments = ["10"]
+        try stuck.run()
+        defer { stuck.terminate() }
+        let started = expectation(description: "start")
+        RelaunchWait.whenExited(stuck.processIdentifier, timeout: 0.3) { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        XCTAssertTrue(stuck.isRunning)       // it gave up waiting; the old one still runs
+    }
+
+    // MARK: fixtures
+
+    /// A minimal app bundle (a copy of /usr/bin/true as its executable), ad-hoc signed or not.
+    private func makeBundle(in dir: URL, name: String, sign: Bool) throws -> URL {
+        let bundle = dir.appendingPathComponent("\(name).app")
+        let macOS = bundle.appendingPathComponent("Contents/MacOS")
+        try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"),
+                                         to: macOS.appendingPathComponent(name))
+        let plist: [String: Any] = ["CFBundleIdentifier": "net.simioni.rd2mac.test.\(name)",
+                                    "CFBundleExecutable": name, "CFBundlePackageType": "APPL"]
+        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+            .write(to: bundle.appendingPathComponent("Contents/Info.plist"))
+        if sign {
+            let codesign = Process()
+            codesign.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+            codesign.arguments = ["--force", "--sign", "-", bundle.path]
+            try codesign.run()
+            codesign.waitUntilExit()
+            XCTAssertEqual(codesign.terminationStatus, 0, "codesign failed")
+        }
+        return bundle
+    }
+
+    private func makeMarkedDir(_ url: URL, _ mark: String) throws -> URL {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try Data(mark.utf8).write(to: url.appendingPathComponent("marker"))
+        return url
+    }
+
+    private func marker(_ url: URL) throws -> String {
+        String(decoding: try Data(contentsOf: url.appendingPathComponent("marker")), as: UTF8.self)
+    }
+}
+
 // MARK: - Helpers
 
 /// A loopback port nothing listens on: the kernel picks a free one for a socket that is

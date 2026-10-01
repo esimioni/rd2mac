@@ -144,6 +144,34 @@ $ rd2mac pull-screenshot 2
 Wi-Fi (see *Usage*). The CLI only talks to the app over loopback (port 53319); the app
 holds the encrypted link to the phone.
 
+## Self-update (both apps, since 0.6)
+
+Once a day each app reads the public repo's latest release
+(`api.github.com/repos/esimioni/rd2mac/releases/latest`) and installs a newer version on
+its own — the Mac app from `RD2Mac.dmg`, the phone from `RD2Mac.apk`.
+
+- **Checks.** Download size and GitHub's SHA-256 digest must match the release. The Mac
+  accepts the app inside the DMG only when it satisfies the *running* app's designated
+  requirement (same identifier, same Developer ID team) — so an ad-hoc dev build never
+  takes an update. Android lets only a build signed with our key replace us.
+- **Never mid-transfer.** The swap waits until no transfer has moved for 30 s
+  (`TransferActivity`, fed by both servers, the CLI's pulls/sends and the phone's shares).
+- **Mac.** The bundle is renamed aside, the new one moved into its place, relaunched with
+  `--rd2mac-wait-pid <old pid>`; the old copy quits once the system reports the new one
+  up, and the new one starts its servers once the old one is gone. Needs a writable
+  parent folder (an admin user in `/Applications`); otherwise it logs and stays.
+- **Android.** Silent (`USER_ACTION_NOT_REQUIRED`) once the user allowed RD2Mac to
+  "Install unknown apps"; before that the system asks through a notification. APKs are
+  downloaded on unmetered networks only. The install kills the app; `MY_PACKAGE_REPLACED`
+  brings the service back.
+- **A release is now a contract.** Asset names `RD2Mac.dmg` / `RD2Mac.apk`; tag `vX.Y`
+  equal to the apps' dotted versions; a higher Android `versionCode`. A release whose
+  asset is not newer is remembered as rejected and not downloaded again.
+- **Testing against a local feed.** Mac: `defaults write net.simioni.rd2mac updateFeedURL
+  http://127.0.0.1:8766/latest.json` (delete it afterwards). Android: build with
+  `-Prd2macUpdateFeed=http://10.0.2.2:8765/latest.json` (emulator → host).
+  Logs: `adb logcat -s RD2Mac.Update` · `/usr/bin/log show --predicate 'process == "RD2Mac"'`.
+
 ## Notes / troubleshooting
 
 - **Same Wi-Fi.** Both devices must share the LAN. Public/guest networks with

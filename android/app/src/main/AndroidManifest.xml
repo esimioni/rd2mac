@@ -17,6 +17,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Self-update from the GitHub release (01/10/2026). Once the user allows "Install
+         unknown apps" for RD2Mac, Android 12+ lets it update ITSELF without asking. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <!-- A share keeps going with the screen off: the CPU must not sleep mid-transfer. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Proximity gate: scan for the Mac's BLE beacon (never used for location). -->
@@ -95,6 +99,11 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- The installer's verdict on a self-update (status extras filled in by the system). -->
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
+            android:exported="false" />
 
         <!-- Transparent helper: reads the phone clipboard (needs focus) and sends it to the Mac. -->
         <activity

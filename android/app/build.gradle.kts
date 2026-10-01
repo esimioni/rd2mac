@@ -22,6 +22,11 @@ android {
         targetSdk = 35
         versionCode = 5
         versionName = "0.5"   // alinhado com o Mac: sobrevive ao "fechar tudo" + switch de localização das fotos
+        // Self-update feed (01/10/2026) — the Mac reads the same release (Updates.swift).
+        // A test build points at a local feed: -Prd2macUpdateFeed=http://<mac-ip>:8000/latest.json
+        val updateFeed = project.findProperty("rd2macUpdateFeed")
+            ?: "https://api.github.com/repos/esimioni/rd2mac/releases/latest"
+        buildConfigField("String", "UPDATE_FEED_URL", "\"$updateFeed\"")
     }
 
     signingConfigs {
@@ -71,4 +76,6 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("junit:junit:4.13.2")
+    // The real org.json on the JVM: android.jar only carries stubs that throw.
+    testImplementation("org.json:json:20250517")
 }

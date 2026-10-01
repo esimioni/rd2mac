@@ -15,6 +15,7 @@ import net.simioni.rd2mac.net.OkHttpPoster
 import net.simioni.rd2mac.net.RD2Crypto
 import net.simioni.rd2mac.net.ResolvedPeer
 import net.simioni.rd2mac.net.TransferOrchestrator
+import net.simioni.rd2mac.update.TransferActivity
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -48,12 +49,14 @@ object ShareTransfers {
         val wakeLock = context.getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RD2Mac:share")
         wakeLock.acquire(WAKE_LOCK_MAX_MS)
+        TransferActivity.shared.begin()   // a self-update waits for the batch
         val result = try {
             send(context, sources, spoolDir, notifier)
         } catch (e: Exception) {
             Log.e(TAG, "share failed", e)
             Result.Failed(context.getString(R.string.share_failed, sources.size, sources.size))
         } finally {
+            TransferActivity.shared.end()
             sources.forEach { runCatching { it.close() } }
             spoolDir.deleteRecursively()
             if (wakeLock.isHeld) wakeLock.release()

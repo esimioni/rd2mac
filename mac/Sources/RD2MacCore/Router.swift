@@ -39,6 +39,11 @@ public struct ServerConfig {
     }
 }
 
+/// The Mac server's file transfers — what a self-update must not cut.
+public func isMacTransfer(method: String, path: String) -> Bool {
+    method == "POST" && path == RD2Mac.Path.receive
+}
+
 /// Builds the request handler for the Mac server: `/ping` and `/receive`.
 /// `/screenshot` and `/media` are 404 here — the Mac is never the source of the
 /// phone's gallery; the Android app serves those.

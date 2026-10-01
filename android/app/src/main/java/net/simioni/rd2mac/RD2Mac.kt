@@ -27,6 +27,12 @@ object RD2Mac {
     }
 }
 
+/** The phone server's file transfers — what a self-update must not cut. Mirror of the
+ *  Mac's `isMacTransfer`. */
+fun isPhoneTransfer(method: String, path: String): Boolean =
+    (method == "POST" && path == RD2Mac.Path.RECEIVE) ||
+        (method == "GET" && (path == RD2Mac.Path.SCREENSHOT_LATEST || path == RD2Mac.Path.MEDIA_LATEST))
+
 enum class Platform(val wire: String) {
     MACOS("macos"), ANDROID("android"), UNKNOWN("unknown");
 

@@ -2,6 +2,7 @@ package net.simioni.rd2mac.http
 
 import net.simioni.rd2mac.io.BoundedInputStream
 import net.simioni.rd2mac.io.Streams
+import net.simioni.rd2mac.update.TransferActivity
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -32,6 +33,10 @@ class HttpServer(
     private val port: Int,
     /** Per-read socket timeout; a silent client is answered 408 and dropped. */
     private val readTimeoutMs: Int = 30_000,
+    /** Where the requests [tracks] picks count as transfers in flight, from their
+     *  request line until the response body is written (self-update waits for them). */
+    private val activity: TransferActivity? = null,
+    private val tracks: (method: String, path: String) -> Boolean = { _, _ -> false },
     private val handler: (Request) -> Response,
 ) {
     class Request(
@@ -138,10 +143,15 @@ class HttpServer(
 
     private fun handleConnection(socket: Socket) {
         socket.use { s ->
+            var tracked = false
             try {
                 s.soTimeout = readTimeoutMs
                 val response = when (val outcome = parseRequest(s.getInputStream())) {
-                    is Parse.Ok -> respond(outcome.request)
+                    is Parse.Ok -> {
+                        tracked = activity != null && tracks(outcome.request.method, outcome.request.path)
+                        if (tracked) activity?.begin()
+                        respond(outcome.request)
+                    }
                     Parse.TooLarge -> Response.text(413, "payload exceeds $MAX_BODY_BYTES bytes")
                     Parse.Bad -> Response.text(400, "Bad Request")
                 }
@@ -150,6 +160,8 @@ class HttpServer(
                 try { writeResponse(s, Response.text(408, "request timeout")) } catch (_: Exception) {}
             } catch (_: Exception) {
                 // client vanished mid-transfer; nothing to do
+            } finally {
+                if (tracked) activity?.end()
             }
         }
     }

@@ -8,15 +8,19 @@ public final class ControlService {
     private let pairingProvider: () -> PairedPeer?
     private let client: HTTPClient
     private let downloadsDir: URL
+    /// Pulls and sends count as transfers here (a self-update waits for them).
+    private let activity: TransferActivity
 
     public init(peerProvider: @escaping () -> ResolvedPeer?,
                 pairingProvider: @escaping () -> PairedPeer? = { nil },
                 client: HTTPClient,
-                downloadsDir: URL) {
+                downloadsDir: URL,
+                activity: TransferActivity = .shared) {
         self.peerProvider = peerProvider
         self.pairingProvider = pairingProvider
         self.client = client
         self.downloadsDir = downloadsDir
+        self.activity = activity
     }
 
     /// The HTTP client carrying the paired token + AES key (auth + body encryption).
@@ -84,6 +88,8 @@ public final class ControlService {
         guard let peer = peerProvider() else {
             return .text(404, "phone not found on the network")
         }
+        activity.begin()
+        defer { activity.end() }
         let semaphore = DispatchSemaphore(value: 0)
         var response = HTTPResponse.text(500, "unknown error")
         Task {
@@ -137,6 +143,8 @@ public final class ControlService {
             return .text(404, "phone not found on the network")
         }
         let mime = FileNaming.mimeType(for: filename)
+        activity.begin()
+        defer { activity.end() }
         let semaphore = DispatchSemaphore(value: 0)
         var response = HTTPResponse.text(500, "unknown error")
         Task {
