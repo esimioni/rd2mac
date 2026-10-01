@@ -844,7 +844,74 @@ final class CryptoTests: XCTestCase {
     }
 }
 
+/// The CLI's loopback call into the app. A pull of a whole gallery runs for minutes and
+/// the app answers only when it is over: the CLI gave up at 60 s and blamed the app for
+/// not running, while the app kept pulling into ~/Downloads (measured 01/10/2026).
+final class ControlClientTests: XCTestCase {
+
+    private func startControl(_ handler: @escaping HTTPServer.Handler) throws -> (HTTPServer, ControlClient) {
+        let server = HTTPServer(port: 0, loopbackOnly: true, handler: handler)
+        try server.start()
+        guard let port = waitForBoundPortSync(server) else { throw RD2MacError.peerNotFound }
+        return (server, ControlClient(port: port))
+    }
+
+    func testTheAppsReplyComesBackWithStatusAndBody() async throws {
+        let (server, client) = try startControl { _ in .text(502, "pull failed: no items") }
+        defer { server.stop() }
+        let outcome = await client.call("POST", "/pull-media?type=image&count=2", timeout: 5)
+        XCTAssertEqual(outcome, .reply(status: 502, body: Data("pull failed: no items".utf8)))
+        XCTAssertEqual(outcome.errorText, "pull failed: no items")
+    }
+
+    func testErrorTextNeverComesOutEmpty() {
+        XCTAssertEqual(ControlClient.Outcome.reply(status: 500, body: Data()).errorText, "HTTP 500")
+        XCTAssertTrue(ControlClient.Outcome.failed("connection lost").errorText.contains("connection lost"))
+    }
+
+    func testNothingListeningMeansTheAppIsNotRunning() async {
+        let outcome = await ControlClient(port: unusedLoopbackPort()).call("GET", "/peer", timeout: 5)
+        XCTAssertEqual(outcome, .notRunning)
+        // "control server" = the Mac's side: the rd2mac memory's diagnosis keys on this text.
+        XCTAssertEqual(outcome.errorText, "control server not responding — is the RD2Mac app running?")
+    }
+
+    func testAnAppStillWorkingIsNotReportedAsNotRunning() async throws {
+        let (server, client) = try startControl { _ in
+            Thread.sleep(forTimeInterval: 1)   // a pull still going when the caller gives up
+            return .text(200, "[]")
+        }
+        defer { server.stop() }
+        let outcome = await client.call("POST", "/pull-media?type=image&count=5000", timeout: 0.3)
+        XCTAssertEqual(outcome, .timedOut)
+        XCTAssertFalse(outcome.errorText.contains("is the RD2Mac app running"))
+    }
+
+    func testPullsAndSendsWaitForTheAppNotForAShortTimer() {
+        // A whole gallery is thousands of items — hours, not the 60 s that cut it short.
+        XCTAssertGreaterThanOrEqual(ControlClient.workTimeout, 24 * 60 * 60)
+    }
+}
+
 // MARK: - Helpers
+
+/// A loopback port nothing listens on: the kernel picks a free one for a socket that is
+/// bound, never listened on, and closed — a connect to it is refused at once.
+private func unusedLoopbackPort() -> UInt16 {
+    let fd = socket(AF_INET, SOCK_STREAM, 0)
+    defer { close(fd) }
+    var addr = sockaddr_in()
+    addr.sin_family = sa_family_t(AF_INET)
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    withUnsafeMutablePointer(to: &addr) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            _ = bind(fd, $0, length)
+            _ = getsockname(fd, $0, &length)
+        }
+    }
+    return UInt16(bigEndian: addr.sin_port)
+}
 
 private func waitForBoundPortSync(_ server: HTTPServer, timeout: TimeInterval = 3) -> UInt16? {
     let deadline = Date().addingTimeInterval(timeout)

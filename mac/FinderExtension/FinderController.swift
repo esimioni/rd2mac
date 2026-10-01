@@ -17,6 +17,7 @@ import FinderSync
 final class FinderController: FIFinderSync {
 
     private static let controlPort = 53319   // mirrors RD2Mac.controlPort
+    private static let workTimeout: TimeInterval = 24 * 60 * 60   // mirrors ControlClient.workTimeout
 
     override init() {
         super.init()
@@ -102,7 +103,7 @@ final class FinderController: FIFinderSync {
     /// error text (the control endpoint answers 404 when no phone is discovered).
     private static func send(path: String) -> String? {
         let url = URL(string: "http://127.0.0.1:\(controlPort)\(sendTarget(forPath: path))")!
-        var request = URLRequest(url: url, timeoutInterval: 300)
+        var request = URLRequest(url: url, timeoutInterval: workTimeout)
         request.httpMethod = "POST"
         let semaphore = DispatchSemaphore(value: 0)
         var failure: String? = "no response"

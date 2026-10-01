@@ -30,7 +30,7 @@ final class ServiceProvider: NSObject {
                 let target = ControlService.sendTarget(forPath: url.path)
                 var request = URLRequest(url: URL(string: "http://127.0.0.1:\(RD2Mac.controlPort)\(target)")!)
                 request.httpMethod = "POST"
-                request.timeoutInterval = 600 // large videos over Wi-Fi
+                request.timeoutInterval = ControlClient.workTimeout // the app answers when the send is over
                 let semaphore = DispatchSemaphore(value: 0)
                 var ok = false
                 URLSession.shared.dataTask(with: request) { _, response, _ in

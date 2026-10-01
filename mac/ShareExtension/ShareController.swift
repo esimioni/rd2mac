@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 class ShareController: NSViewController {
 
     private let controlURL = URL(string: "http://127.0.0.1:53319/send-file")!
+    private let workTimeout: TimeInterval = 24 * 60 * 60   // mirrors ControlClient.workTimeout
     private var statusLabel: NSTextField!
 
     override func loadView() {
@@ -87,7 +88,7 @@ class ShareController: NSViewController {
     }
 
     private func post(name: String, data: Data) async -> Bool {
-        var request = URLRequest(url: controlURL, timeoutInterval: 60)
+        var request = URLRequest(url: controlURL, timeoutInterval: workTimeout)
         request.httpMethod = "POST"
         request.setValue(headerEncode(name), forHTTPHeaderField: "X-RD2Mac-Filename")
         request.httpBody = data

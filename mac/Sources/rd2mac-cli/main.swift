@@ -19,16 +19,8 @@ func usage() {
     """)
 }
 
-/// Call the app's loopback control endpoint.
-func control(_ method: String, _ path: String, timeout: TimeInterval = 60) async -> (status: Int, data: Data) {
-    var request = URLRequest(url: URL(string: "http://127.0.0.1:\(RD2Mac.controlPort)\(path)")!)
-    request.httpMethod = method
-    request.timeoutInterval = timeout
-    guard let (data, response) = try? await URLSession.shared.data(for: request) else {
-        return (0, Data())
-    }
-    return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
-}
+/// The app's loopback control endpoint.
+let control = ControlClient()
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
@@ -38,12 +30,10 @@ func fail(_ message: String) -> Never {
 /// Pull via control, print each saved path on success (stdout = paths only, one
 /// per line — so an AI agent can read every pulled file).
 func pull(_ controlPath: String, label: String) async {
-    let (status, data) = await control("POST", controlPath)
-    if status == 0 {
-        fail("\(label) failed: control server not responding — is the RD2Mac app running?")
-    }
-    guard status == 200, let results = try? JSONDecoder().decode([ReceiveResult].self, from: data) else {
-        fail("\(label) failed: \(String(data: data, encoding: .utf8) ?? "HTTP \(status)")")
+    let outcome = await control.call("POST", controlPath, timeout: ControlClient.workTimeout)
+    guard case .reply(status: 200, body: let data) = outcome,
+          let results = try? JSONDecoder().decode([ReceiveResult].self, from: data) else {
+        fail("\(label) failed: \(outcome.errorText)")
     }
     for result in results { print(result.saved) }
 }
@@ -71,26 +61,22 @@ case "send":
             : FileManager.default.currentDirectoryPath + "/" + file
         // sendTarget owns the query encoding (Services menu uses the same one) —
         // .alphanumerics here was Unicode-wide and let "é" through raw.
-        let (status, data) = await control("POST", ControlService.sendTarget(forPath: absolute))
-        if status == 200, let result = try? JSONDecoder().decode(ReceiveResult.self, from: data) {
+        let outcome = await control.call("POST", ControlService.sendTarget(forPath: absolute),
+                                         timeout: ControlClient.workTimeout)
+        if case .reply(status: 200, body: let data) = outcome,
+           let result = try? JSONDecoder().decode(ReceiveResult.self, from: data) {
             print("sent \(file) → \(result.saved)")
         } else {
-            FileHandle.standardError.write(Data(
-                "send failed for \(file): \(String(data: data, encoding: .utf8) ?? "HTTP \(status)")\n".utf8))
+            FileHandle.standardError.write(Data("send failed for \(file): \(outcome.errorText)\n".utf8))
             failures += 1
         }
     }
     if failures > 0 { exit(1) }
 
 case "peer":
-    let (status, data) = await control("GET", "/peer")
-    if status == 200 {
-        print(String(data: data, encoding: .utf8) ?? "")
-    } else if status == 0 {
-        fail("control server not responding — is the RD2Mac app running?")
-    } else {
-        fail(String(data: data, encoding: .utf8) ?? "HTTP \(status)")
-    }
+    let outcome = await control.call("GET", "/peer", timeout: ControlClient.quickTimeout)
+    guard case .reply(status: 200, body: let data) = outcome else { fail(outcome.errorText) }
+    print(String(data: data, encoding: .utf8) ?? "")
 
 case "ping":
     guard args.count >= 3, let port = UInt16(args[2]) else { usage(); exit(2) }
