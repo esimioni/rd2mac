@@ -533,8 +533,8 @@ final class ControlServiceTests: XCTestCase {
 
     /// Fake phone serving `available` screenshots indexed by `?skip=` (skip≥available
     /// → 404) — the phone side of a multi-item pull.
-    private func multiScreenshotPhone(available: Int, key: Data) -> HTTPServer {
-        HTTPServer(port: 0) { request in
+    private func multiScreenshotPhone(available: Int, key: Data, port: UInt16 = 0) -> HTTPServer {
+        HTTPServer(port: port) { request in
             guard request.method == "GET", request.path == RD2Mac.Path.screenshotLatest else {
                 return .text(404, "nope")
             }
@@ -552,7 +552,11 @@ final class ControlServiceTests: XCTestCase {
 
     private func runPull(_ query: [String: String], against phone: HTTPServer,
                          into dir: URL, key: Data) throws -> HTTPResponse {
-        let phonePort = try XCTUnwrap(waitForBoundPortSync(phone))
+        try runPull(query, phonePort: try XCTUnwrap(waitForBoundPortSync(phone)), into: dir, key: key)
+    }
+
+    private func runPull(_ query: [String: String], phonePort: UInt16,
+                         into dir: URL, key: Data) throws -> HTTPResponse {
         let peer = ResolvedPeer(name: "S23", host: "127.0.0.1", port: phonePort, platform: .android)
         let pairedPhone = PairedPeer(id: "s23", name: "S23", host: "", port: 0,
                                      token: "tok", key: key.base64EncodedString())
@@ -601,6 +605,37 @@ final class ControlServiceTests: XCTestCase {
         XCTAssertEqual(response.status, 200)
         let results = try JSONDecoder().decode([ReceiveResult].self, from: response.body)
         XCTAssertEqual(results.count, 2)
+    }
+
+    /// The first connection of a freshly installed Mac binary is refused by Local Network
+    /// privacy for ~50 ms (measured 02/10/2026, right after 0.6 replaced the app): a pull
+    /// that gave up on the first transport error failed after every update.
+    func testPullRetriesATransportErrorBeforeGivingUp() throws {
+        let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let key = Data(repeating: 0x2A, count: 32)
+        let port = unusedLoopbackPort()              // nothing listens yet: the first try is refused
+        let phone = multiScreenshotPhone(available: 1, key: key, port: port)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { try? phone.start() }
+        defer { phone.stop() }
+
+        let response = try runPull(["count": "1"], phonePort: port, into: dir, key: key)
+
+        XCTAssertEqual(response.status, 200, String(decoding: response.body, as: UTF8.self))
+        XCTAssertEqual(try JSONDecoder().decode([ReceiveResult].self, from: response.body).count, 1)
+    }
+
+    func testRunningOutOfItemsStopsAtOnceWithoutRetrying() throws {
+        let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let key = Data(repeating: 0x2A, count: 32)
+        let phone = multiScreenshotPhone(available: 1, key: key)
+        try phone.start(); defer { phone.stop() }
+
+        let started = Date()
+        let response = try runPull(["count": "3"], against: phone, into: dir, key: key)
+
+        // The 404 is the phone's "no more items", not a blip: no retry delay on it.
+        XCTAssertLessThan(Date().timeIntervalSince(started), 0.4)
+        XCTAssertEqual(try JSONDecoder().decode([ReceiveResult].self, from: response.body).count, 1)
     }
 
     func testPullReturns404WhenNoPeer() throws {

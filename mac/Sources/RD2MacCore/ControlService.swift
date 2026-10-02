@@ -100,7 +100,11 @@ public final class ControlService {
                 let separator = basePath.contains("?") ? "&" : "?"
                 let path = basePath + "\(separator)skip=\(skip)"
                 do {
-                    let file = try await authedClient.download(path: path, host: peer.host, port: peer.port)
+                    // Only a transport blip is worth another try: the phone's 404 is
+                    // "out of items", the normal end of a pull.
+                    let file = try await Self.retrying(when: { $0 is URLError }) {
+                        try await authedClient.download(path: path, host: peer.host, port: peer.port)
+                    }
                     results.append(try persist(file.data, preferredName: file.filename, into: downloadsDir))
                 } catch {
                     lastError = error.localizedDescription
@@ -149,23 +153,42 @@ public final class ControlService {
         var response = HTTPResponse.text(500, "unknown error")
         Task {
             defer { semaphore.signal() }
-            var lastError: Error?
-            for delay in [0.0, 0.5, 1.5] {
-                if delay > 0 {
-                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            do {
+                let result = try await Self.retrying {
+                    try await authedClient.send(data: data, filename: filename,
+                                                mime: mime, host: peer.host, port: peer.port)
                 }
-                do {
-                    let result = try await authedClient.send(data: data, filename: filename,
-                                                       mime: mime, host: peer.host, port: peer.port)
-                    response = .json(200, result)
-                    return
-                } catch {
-                    lastError = error
-                }
+                response = .json(200, result)
+            } catch {
+                response = .text(502, "send failed after retries: \(error.localizedDescription)")
             }
-            response = .text(502, "send failed after retries: \(lastError?.localizedDescription ?? "")")
         }
         semaphore.wait()
         return response
+    }
+
+    /// Every phone transfer gets three tries: at once, 0.5 s and 1.5 s later. Real
+    /// networks blip — the first connection of a freshly installed Mac binary is refused
+    /// by Local Network privacy for ~50 ms while macOS re-registers it (measured
+    /// 02/10/2026, after an update), and a first pull has timed out once now and then.
+    static let retryDelays: [TimeInterval] = [0, 0.5, 1.5]
+
+    /// Runs `attempt` until it succeeds or the tries run out; an error `when` rejects
+    /// ends it at once.
+    static func retrying<T>(when shouldRetry: (Error) -> Bool = { _ in true },
+                            _ attempt: () async throws -> T) async throws -> T {
+        var lastError: Error = RD2MacError.emptyResponse
+        for delay in retryDelays {
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+            do {
+                return try await attempt()
+            } catch {
+                lastError = error
+                if !shouldRetry(error) { throw error }
+            }
+        }
+        throw lastError
     }
 }
