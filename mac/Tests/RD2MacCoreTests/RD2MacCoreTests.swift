@@ -463,6 +463,50 @@ final class RoundTripTests: XCTestCase {
         XCTAssertEqual(pong?.name, "Loopback")
     }
 
+    /// The keep-alive's real probe asks the address itself, and only the peer's own
+    /// id is a yes — an address can pass to another install while multicast is quiet.
+    func testThePingProbeConfirmsOnlyThePeerItself() throws {
+        let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let server = phoneServer(port: 0, downloadsDir: dir)
+        try server.start()
+        defer { server.stop() }
+        let port = try XCTUnwrap(waitForBoundPortSync(server))
+
+        XCTAssertTrue(answer(ResolvedPeer(id: "phone-id", name: "Phone", host: "127.0.0.1",
+                                          port: port, platform: .android)))
+        XCTAssertFalse(answer(ResolvedPeer(id: "someone-else", name: "Phone", host: "127.0.0.1",
+                                           port: port, platform: .android)))
+    }
+
+    /// Like every call to the phone, the probe survives a refused first try (the Local
+    /// Network blip of a freshly updated binary) — or each update would drop the phone.
+    func testThePingProbeRetriesARefusedFirstTry() throws {
+        let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let port = unusedLoopbackPort()       // nothing listens yet: the first try is refused
+        let server = phoneServer(port: port, downloadsDir: dir)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { try? server.start() }
+        defer { server.stop() }
+
+        XCTAssertTrue(answer(ResolvedPeer(id: "phone-id", name: "Phone", host: "127.0.0.1",
+                                          port: port, platform: .android)))
+    }
+
+    /// Stands in for the phone: the protocol's `/ping` answers with its identity.
+    private func phoneServer(port: UInt16, downloadsDir: URL) -> HTTPServer {
+        let phone = PeerIdentity(id: "phone-id", name: "Phone", platform: .android)
+        return HTTPServer(port: port, handler: makeMacRouter(
+            config: ServerConfig(identity: phone, downloadsDir: downloadsDir)))
+    }
+
+    /// Runs the real probe; its answer arrives on the main thread, which `wait` spins.
+    private func answer(_ peer: ResolvedPeer) -> Bool {
+        let answered = expectation(description: "probe answered")
+        var isPeer = false
+        PeerBrowser.pingProbe(peerName: "Mac")(peer) { isPeer = $0; answered.fulfill() }
+        wait(for: [answered], timeout: 10)
+        return isPeer
+    }
+
     private func waitForBoundPort(_ server: HTTPServer, timeout: TimeInterval = 3) async throws -> UInt16 {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -766,20 +810,116 @@ final class BrowseKeepAliveTests: XCTestCase {
         XCTAssertTrue(advertiser.shouldRearm(now: t0.addingTimeInterval(320), forced: true))
     }
 
-    func testPeerThatSurvivesTwoRearmsWithoutAnsweringIsDropped() {
+    func testPeerUnconfirmedForTwoRearmsIsStale() {
         let k = BrowseKeepAlive(now: t0, rearmEvery: 60, peerTTL: 150, debounce: 5)
         XCTAssertFalse(k.isStale(seen: t0, now: t0.addingTimeInterval(150)))
         XCTAssertTrue(k.isStale(seen: t0, now: t0.addingTimeInterval(151)))
     }
+}
 
-    func testSweepKeepsFreshPeersAndDropsStaleOnes() {
-        let k = BrowseKeepAlive(now: t0, rearmEvery: 60, peerTTL: 150, debounce: 5)
-        let fresh = ResolvedPeer(id: "a", name: "S23", host: "10.0.0.5", port: 53318, platform: .android)
-        let gone = ResolvedPeer(id: "b", name: "Old", host: "10.0.0.9", port: 53318, platform: .android)
-        let entries = ["S23": PeerBrowser.Entry(peer: fresh, seen: t0.addingTimeInterval(140)),
-                       "Old": PeerBrowser.Entry(peer: gone, seen: t0)]
-        let live = PeerBrowser.liveEntries(entries, now: t0.addingTimeInterval(160), policy: k)
-        XCTAssertEqual(Array(live.keys), ["S23"])
+/// The expiry half of the keep-alive, driven by the clock: multicast FINDS the
+/// phone; whether it is GONE is asked by unicast before the menu says so.
+final class PeerBrowserTests: XCTestCase {
+
+    private let t0 = Date(timeIntervalSince1970: 1_000_000)
+    private let s23 = ResolvedPeer(id: "s23-id", name: "S23", host: "10.0.0.5", port: 53318,
+                                   platform: .android)
+
+    /// Stands in for the unicast ping: records who was asked; the test answers.
+    private final class FakeProbe {
+        private(set) var asked: [ResolvedPeer] = []
+        private var pending: [(Bool) -> Void] = []
+
+        func probe(_ peer: ResolvedPeer, _ answered: @escaping (Bool) -> Void) {
+            asked.append(peer)
+            pending.append(answered)
+        }
+
+        func answer(_ isPeer: Bool, file: StaticString = #filePath, line: UInt = #line) {
+            guard !pending.isEmpty else { return XCTFail("no probe is out", file: file, line: line) }
+            pending.removeFirst()(isPeer)
+        }
+    }
+
+    private var clock = Date(timeIntervalSince1970: 0)
+    private var probe = FakeProbe()
+    private var browser: PeerBrowser!
+    /// What the menu would show — the effect `onPeersChanged` feeds.
+    private var shown: [ResolvedPeer] = []
+
+    override func setUp() {
+        clock = t0
+        probe = FakeProbe()
+        let probe = self.probe
+        browser = PeerBrowser(excludePlatform: .macos, probe: probe.probe,
+                              now: { [unowned self] in self.clock })
+        browser.onPeersChanged = { [unowned self] in self.shown = $0 }
+        browser.record(s23)    // the browse resolves the phone at t0
+    }
+
+    private func at(_ seconds: TimeInterval) { clock = t0.addingTimeInterval(seconds) }
+
+    // 06/10/2026: the S23 dozed and left five mDNS re-arms in a row unanswered (~5 min)
+    // while it still answered ping — the menu said "searching" the whole time the phone
+    // said "connected". Silence on multicast is not absence.
+    func testAPeerTheBrowseStopsHearingStaysWhileItAnswersByUnicast() {
+        at(150); browser.sweep()
+        XCTAssertTrue(probe.asked.isEmpty, "a fresh peer is not probed")
+
+        at(151); browser.sweep()
+        XCTAssertEqual(probe.asked, [s23])
+        XCTAssertEqual(shown, [s23], "not dropped while the probe is out")
+
+        at(152); probe.answer(true)
+        XCTAssertEqual(shown, [s23])
+
+        // The answer counts as a sighting: the next probe comes a full TTL later.
+        at(302); browser.sweep()
+        XCTAssertEqual(probe.asked.count, 1)
+        at(303); browser.sweep()
+        XCTAssertEqual(probe.asked.count, 2)
+        XCTAssertEqual(shown, [s23])
+    }
+
+    func testAPeerThatAnswersNeitherIsDropped() {
+        at(151); browser.sweep()
+        at(156); probe.answer(false)
+        XCTAssertEqual(shown, [], "no multicast and no unicast: gone")
+    }
+
+    func testASlowProbeIsNotAskedTwice() {
+        at(151); browser.sweep()
+        at(166); browser.sweep()
+        XCTAssertEqual(probe.asked.count, 1)
+        probe.answer(false)
+        at(181); browser.sweep()
+        XCTAssertEqual(probe.asked.count, 1, "nothing left to probe")
+    }
+
+    func testALateNoDoesNotDropAPeerTheBrowseFoundAgain() {
+        at(151); browser.sweep()
+        at(155); browser.record(s23)          // multicast came back meanwhile
+        at(156); probe.answer(false)
+        XCTAssertEqual(shown, [s23])
+    }
+
+    func testAnAnswerAboutTheOldAddressIsIgnored() {
+        let moved = ResolvedPeer(id: "s23-id", name: "S23", host: "10.0.0.7", port: 53318,
+                                 platform: .android)
+        at(151); browser.sweep()
+        at(155); browser.record(moved)        // the phone got a new address meanwhile
+        at(450); probe.answer(false)          // the old address is dead — says nothing of the new
+        XCTAssertEqual(shown, [moved])
+    }
+
+    func testOnlyThePeersOwnIdCountsAsAnAnswer() {
+        XCTAssertTrue(s23.isAnswered(by: PeerIdentity(id: "s23-id", name: "S23", platform: .android)))
+        XCTAssertFalse(s23.isAnswered(by: PeerIdentity(id: "other", name: "S23", platform: .android)),
+                       "the address went to another install")
+        XCTAssertFalse(s23.isAnswered(by: nil), "nobody answered")
+        let preId = ResolvedPeer(id: "", name: "Old", host: "10.0.0.9", port: 53318, platform: .android)
+        XCTAssertFalse(preId.isAnswered(by: PeerIdentity(id: "", name: "Old", platform: .android)),
+                       "a peer without an id can't be told from a stranger")
     }
 }
 

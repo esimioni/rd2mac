@@ -269,7 +269,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             "platform": identity.platform.rawValue,
             "v": "\(identity.v)",
         ])
-        browser = PeerBrowser(excludePlatform: .macos)
+        browser = PeerBrowser(excludePlatform: .macos,
+                              probe: PeerBrowser.pingProbe(peerName: identity.name))
         browser.onPeersChanged = { [weak self] peers in
             DispatchQueue.main.async {
                 self?.livePeers = peers

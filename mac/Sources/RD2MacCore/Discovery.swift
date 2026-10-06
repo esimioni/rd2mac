@@ -10,12 +10,14 @@ import Network
 /// alive, the peer list stays empty, and every answer is a truthful-but-useless
 /// "phone not found" until the app is restarted (real defect, 11/08/2026).
 /// So recovery cannot hang off an error callback that may never come: the browse
-/// is re-armed on a schedule, and a peer that doesn't answer a re-arm is dropped
-/// so a dead browse can't leave a stale address behind either.
+/// is re-armed on a schedule, and a peer that doesn't answer the re-arms must
+/// answer a unicast probe or be dropped, so a dead browse can't leave a stale
+/// address behind either.
 struct BrowseKeepAlive {
     /// Re-arm the search this often even while it looks healthy.
     let rearmEvery: TimeInterval
-    /// Drop a peer unseen for this long (~2 missed re-arms).
+    /// A peer unseen for this long (~2 missed re-arms) is stale: probed, then dropped
+    /// if it doesn't answer.
     let peerTTL: TimeInterval
     /// Floor between re-arms, so a burst of wake/path events can't hammer mDNS.
     let debounce: TimeInterval
@@ -56,6 +58,14 @@ public struct ResolvedPeer: Equatable, Sendable {
         self.host = host
         self.port = port
         self.platform = platform
+    }
+
+    /// Whether a `/ping` reply came from this very install. The address may have
+    /// gone to another device since the browse last saw it, so only the stable id
+    /// counts — and a peer without one (a pre-id phone) can't be confirmed this way.
+    func isAnswered(by identity: PeerIdentity?) -> Bool {
+        guard let identity, !id.isEmpty else { return false }
+        return identity.id == id
     }
 }
 
@@ -114,9 +124,15 @@ public final class PeerAdvertiser: NSObject, NetServiceDelegate {
 /// Browses for the counterpart peer and resolves it to `ResolvedPeer`.
 /// Ignores our own platform's services (so a Mac only surfaces the phone).
 public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
+    /// Asks a peer the browse stopped hearing from whether it is still there, and
+    /// calls back ON THE MAIN THREAD with whether it answered as itself.
+    public typealias Probe = (_ peer: ResolvedPeer, _ answered: @escaping (Bool) -> Void) -> Void
+
     private var browser = NetServiceBrowser()
     private var resolving: Set<NetService> = []
     private let excludePlatform: Platform
+    private let probe: Probe
+    private let now: () -> Date
 
     /// A resolved peer plus when it last answered — the timestamp is what lets a
     /// peer that stopped answering be dropped (see `BrowseKeepAlive`).
@@ -127,7 +143,9 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
 
     /// Live counterpart peers, keyed by their (unique) Bonjour instance name.
     private var entries: [String: Entry] = [:]
-    private var keepAlive = BrowseKeepAlive()
+    /// Peers with a probe out, so a slow answer isn't asked again on the next tick.
+    private var probing: Set<String> = []
+    private var keepAlive: BrowseKeepAlive
     private var timer: Timer?
     private let pathMonitor = NWPathMonitor()
     /// Last list handed to `onPeersChanged`, so a re-arm's repeated resolves
@@ -145,8 +163,32 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
     /// — one timer, one path monitor, one wake observer.
     public var onRearm: ((_ forced: Bool) -> Void)?
 
-    public init(excludePlatform: Platform) {
+    /// The real probe: `GET /ping` at the peer's last address. Unicast reaches a
+    /// phone whose Wi-Fi sleeps through multicast — measured 06/10/2026: the S23
+    /// left five re-arms in a row unanswered (5 min) while it answered ping.
+    /// Retried like every call to the phone (the Local Network blip after an update).
+    public static func pingProbe(peerName: String) -> Probe {
+        { peer, answered in
+            Task {
+                let client = HTTPClient(peerName: peerName, timeout: 5)
+                let identity = try? await ControlService.retrying {
+                    guard let identity = await client.ping(host: peer.host, port: peer.port) else {
+                        throw RD2MacError.peerNotFound
+                    }
+                    return identity
+                }
+                let isPeer = peer.isAnswered(by: identity)
+                DispatchQueue.main.async { answered(isPeer) }
+            }
+        }
+    }
+
+    public init(excludePlatform: Platform, probe: @escaping Probe,
+                now: @escaping () -> Date = Date.init) {
         self.excludePlatform = excludePlatform
+        self.probe = probe
+        self.now = now
+        self.keepAlive = BrowseKeepAlive(now: now())
         super.init()
     }
 
@@ -175,6 +217,7 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
         browser.stop()
         resolving.removeAll()
         entries.removeAll()
+        probing.removeAll()
         published = []
     }
 
@@ -200,13 +243,8 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
     }
 
     private func tick() {
-        let now = Date()
-        let live = Self.liveEntries(entries, now: now, policy: keepAlive)
-        if live.count != entries.count {
-            entries = live
-            publish()
-        }
-        if keepAlive.shouldRearm(now: now) {
+        sweep()
+        if keepAlive.shouldRearm(now: now()) {
             // Only worth a log line while nothing is found — that's the state the
             // re-arm exists for, and it's the breadcrumb if it ever fails again.
             if entries.isEmpty { NSLog("RD2Mac: no peer yet — re-arming Bonjour browse") }
@@ -215,10 +253,38 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
         }
     }
 
-    /// Entries still considered present. Pure so the expiry rule is testable.
-    static func liveEntries(_ entries: [String: Entry], now: Date,
-                            policy: BrowseKeepAlive) -> [String: Entry] {
-        entries.filter { !policy.isStale(seen: $0.value.seen, now: now) }
+    /// The expiry half of the keep-alive, run on every tick. A peer the browse
+    /// stopped confirming is not dropped on that alone: multicast silence is not
+    /// absence (a dozing phone sleeps through queries it would answer by unicast),
+    /// so it is asked directly, and only a peer that fails that too is gone.
+    func sweep() {
+        let at = now()
+        for (name, entry) in entries
+        where keepAlive.isStale(seen: entry.seen, now: at) && !probing.contains(name) {
+            probing.insert(name)
+            probe(entry.peer) { [weak self] isPeer in self?.settleProbe(of: entry.peer, isPeer: isPeer) }
+        }
+    }
+
+    /// A probe came back. The browse may have re-confirmed the peer meanwhile, or
+    /// found it at another address — either way its word is newer than this answer.
+    private func settleProbe(of peer: ResolvedPeer, isPeer: Bool) {
+        probing.remove(peer.name)
+        let at = now()
+        guard let entry = entries[peer.name], entry.peer == peer,
+              keepAlive.isStale(seen: entry.seen, now: at) else { return }
+        if isPeer {
+            entries[peer.name]?.seen = at
+        } else {
+            entries.removeValue(forKey: peer.name)
+            publish()
+        }
+    }
+
+    /// The browse resolved a peer: it is there, at this address, now.
+    func record(_ peer: ResolvedPeer) {
+        entries[peer.name] = Entry(peer: peer, seen: now())
+        publish()
     }
 
     private func publish() {
@@ -268,10 +334,8 @@ public final class PeerBrowser: NSObject, NetServiceBrowserDelegate, NetServiceD
         if platform == excludePlatform { return }   // ignore ourselves
 
         guard let host = Self.preferredIP(addresses) else { return }
-        entries[sender.name] = Entry(peer: ResolvedPeer(id: id, name: sender.name, host: host,
-                                                        port: UInt16(sender.port), platform: platform),
-                                     seen: Date())
-        publish()
+        record(ResolvedPeer(id: id, name: sender.name, host: host,
+                            port: UInt16(sender.port), platform: platform))
     }
 
     public func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {

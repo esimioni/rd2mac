@@ -31,6 +31,11 @@ macOS side (`mac/`) and the Android side (`android/`) implement exactly this.
   so it survives name/IP changes — is persisted, and from then on the device
   resolves and talks only to that peer. The last resolved IP:port is cached for a
   fast reconnect.
+- **Multicast silence is not absence.** A dozing phone can leave mDNS queries
+  unanswered for minutes while it still answers unicast (measured 06/10/2026). So
+  the Mac drops a peer only when it stops answering BOTH: unconfirmed by the browse
+  for 150 s, it gets a `GET /ping` at its last address, and stays while the reply
+  carries its own `id`.
 
 ## Headers
 
@@ -51,6 +56,8 @@ Health + identity. Response `200 application/json`:
 ```
 `id` is the stable per-install UUID (also in the TXT record). A peer from before
 `id` existed simply omits it; the field decodes tolerantly to `""`.
+It is also the Mac's liveness probe for a phone the browse stopped hearing (see
+Discovery), so it must stay open, cheap, and carry the same `id` as the TXT record.
 
 ### `POST /pair`
 ECDH key exchange. Request body JSON `{ "id", "name", "pubKey" }` — the initiator's
