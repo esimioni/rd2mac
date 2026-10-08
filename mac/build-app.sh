@@ -4,6 +4,10 @@
 # starts it at login (KeepAlive only on crash, so the menu's Quit still works).
 # Re-run any time after changing the Mac source.
 #
+# `--release` signs with a Developer ID, notarizes and staples the bundle staged in
+# mac/.build/RD2Mac.app — and installs NOTHING: this Mac takes a release through its
+# own self-update, like every user's. `make-dmg.sh` then packs that staged bundle.
+#
 # Machine-specific settings live in mac/local.env (untracked, optional), sourced below:
 #   RD2MAC_CLI_DEST  also copy the CLI to this path (unset = don't; the app's menu
 #                    "Install command-line tool…" puts it on the PATH anyway)
@@ -121,6 +125,12 @@ else
     codesign --force --sign - "$STAGE"
 fi
 
+if [ "$RELEASE" -eq 1 ]; then
+    echo "✓ Release bundle ready, NOT installed: $STAGE"
+    echo "  Next: mac/make-dmg.sh packs it into a notarized RD2Mac.dmg."
+    exit 0
+fi
+
 echo "▶ Stopping any running instance…"
 launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
 osascript -e "quit app \"$APP_NAME\"" 2>/dev/null || true
@@ -176,7 +186,6 @@ echo "▶ Loading LaunchAgent (starts the app now + at login)…"
 launchctl bootstrap "$DOMAIN" "$AGENT" 2>/dev/null || launchctl load "$AGENT" 2>/dev/null || true
 
 echo "✓ Done. RD2Mac is running and will start at login."
-if [ "$RELEASE" -eq 1 ]; then echo "  Distributable (notarized + stapled): $DIST_ZIP"; fi
 if [ -n "$CLI_DEST" ]; then echo "  CLI copied to $CLI_DEST"; fi
 echo "  To put the CLI on your PATH: menu-bar icon → Install command-line tool…"
 echo "  First run may prompt for Local Network — allow it, or enable RD2Mac"

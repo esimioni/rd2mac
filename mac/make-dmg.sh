@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Build a distributable DMG from the installed, notarized RD2Mac.app: a
-# drag-to-Applications volume, signed + notarized + stapled so it opens clean on
-# other Macs (no "unidentified developer"). Run AFTER `build-app.sh --release`,
-# which notarizes and installs the .app to /Applications.
+# Build a distributable DMG from the notarized bundle `build-app.sh --release` staged
+# in mac/.build: a drag-to-Applications volume, signed + notarized + stapled so it
+# opens clean on other Macs (no "unidentified developer"). It is also what both
+# self-updating apps download, so it never comes from /Applications.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 [ -f "$HERE/local.env" ] && . "$HERE/local.env"   # optional machine settings (see build-app.sh)
 APP_NAME="RD2Mac"
-SRC_APP="/Applications/${APP_NAME}.app"
+SRC_APP="$HERE/.build/${APP_NAME}.app"
 OUT_DMG="${RD2MAC_DIST_DIR:-$HERE/.build/dist}/${APP_NAME}.dmg"
 NOTARY_PROFILE="rd2mac-notary"
 
-[ -d "$SRC_APP" ] || { echo "✗ $SRC_APP not found — run build-app.sh --release first." >&2; exit 1; }
+# A plain build stages an ad-hoc bundle at the same path: only a stapled one ships.
+xcrun stapler validate -q "$SRC_APP" 2>/dev/null \
+    || { echo "✗ $SRC_APP is not a notarized build — run build-app.sh --release first." >&2; exit 1; }
 SIGN_ID="$(security find-identity -v -p codesigning \
     | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
 [ -n "${SIGN_ID:-}" ] || { echo "✗ No 'Developer ID Application' certificate found." >&2; exit 1; }

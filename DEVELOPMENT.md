@@ -50,11 +50,13 @@ scripts — e.g. to also copy the CLI somewhere and keep distributables elsewher
 : "${RD2MAC_DIST_DIR:=$HOME/Desktop}"
 ```
 
-**Distribution build:** `mac/build-app.sh --release` signs with the *Developer ID
-Application* certificate in your keychain (hardened runtime), notarizes through the
-notarytool Keychain profile `rd2mac-notary` (create it once with `xcrun notarytool
-store-credentials rd2mac-notary`) and staples; then `mac/make-dmg.sh` packs, signs and
-notarizes `RD2Mac.dmg`.
+**Distribution build:** `mac/build-app.sh --release` signs the bundle staged in
+`mac/.build/RD2Mac.app` with the *Developer ID Application* certificate in your keychain
+(hardened runtime), notarizes it through the notarytool Keychain profile `rd2mac-notary`
+(create it once with `xcrun notarytool store-credentials rd2mac-notary`) and staples —
+and installs nothing: the build Mac takes the release through its own self-update, like
+any user's. Then `mac/make-dmg.sh` packs that staged bundle (it refuses one that isn't
+notarized), signs and notarizes `RD2Mac.dmg`.
 
 First launch shows a **Local Network** permission prompt (macOS 15+) — allow it,
 or enable RD2Mac under *System Settings → Privacy & Security → Local Network*.

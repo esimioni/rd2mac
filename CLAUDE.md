@@ -44,7 +44,8 @@ update themselves. This file is the minimal grounding — deep docs:
 
 ```bash
 mac/build-app.sh                      # ad-hoc build → /Applications/RD2Mac.app (CLI embedded); machine paths in mac/local.env
-mac/build-app.sh --release           # Developer ID + notarize (Keychain profile rd2mac-notary) — for distribution
+mac/build-app.sh --release           # Developer ID + notarize the staged bundle — installs NOTHING (this Mac self-updates)
+mac/make-dmg.sh                      # notarized RD2Mac.dmg from that staged bundle (refuses an ad-hoc one)
 swift test --package-path mac
 android/gradlew -p android assembleRelease        # daemon on a JDK 17 (gradle/gradle-daemon-jvm.properties); JDK 26 breaks Kotlin 1.9
 android/gradlew -p android testDebugUnitTest
