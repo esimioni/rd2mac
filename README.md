@@ -7,6 +7,9 @@
 Transferência **criptografada** de arquivos e área de transferência entre Android e Mac, pela Wi-Fi.
 *Encrypted file & clipboard transfer between Android and macOS, over Wi-Fi.*
 
+Código aberto (licença MIT) — para compilar a partir do código, veja [DEVELOPMENT.md](DEVELOPMENT.md).
+*Open source (MIT license) — to build it from source, see [DEVELOPMENT.md](DEVELOPMENT.md).*
+
 ---
 
 <a id="-português"></a>
@@ -190,3 +193,12 @@ From version **0.6** on, RD2Mac **updates itself** on both devices — it checks
 - Avoid **public or guest** networks — their *client isolation* blocks discovery and transfers. Use your normal home network.
 - **Clipboard sync stopped?** If **"Only when the Mac is nearby"** is on, get closer to the Mac (the app shows *"Mac nearby ✓"* when it's back).
 - Still nothing? **Close and reopen** the app on both sides.
+
+---
+
+## 📄 Licença · License
+
+O código é aberto, sob a [licença MIT](LICENSE). O ícone do app não faz parte dela.
+*The source code is open under the [MIT license](LICENSE). The app icon is not covered by it.*
+
+*The Android robot is reproduced or modified from work created and shared by Google and used according to terms described in the [Creative Commons 3.0 Attribution License](https://creativecommons.org/licenses/by/3.0/).*
