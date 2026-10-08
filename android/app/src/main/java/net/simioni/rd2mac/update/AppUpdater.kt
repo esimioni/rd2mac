@@ -17,8 +17,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * Self-update, checked once a day against the public GitHub release (Eduardo,
- * 01/10/2026) — the phone's half of the Mac's `Updater`. A newer APK is downloaded,
+ * Self-update, checked once a day against the public GitHub release (since 0.6)
+ * — the phone's half of the Mac's `Updater`. A newer APK is downloaded,
  * checked against GitHub's size and digest and against our own package, and installed
  * once no transfer has moved for a while.
  *

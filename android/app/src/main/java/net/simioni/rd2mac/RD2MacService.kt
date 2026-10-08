@@ -174,7 +174,7 @@ class RD2MacService : Service() {
      * The user cleared the recents list. The service is declared
      * `stopWithTask="false"`, so AOSP keeps it running — but Samsung's One UI kills
      * the whole process anyway, and that is exactly how the app "disappears" when
-     * Eduardo clears everything without meaning to close RD2Mac. Re-arm from the
+     * a user clears everything without meaning to close RD2Mac. Re-arm from the
      * outside: an alarm one second out restarts the service after the kill.
      *
      * It only lands if the app is exempt from battery optimisation, which is why

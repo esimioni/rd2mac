@@ -1,6 +1,9 @@
-# RD2Mac
+# RD2Mac — development
 
-Personal LocalSend replacement — **Android phone ⇄ macOS** file transfer over the
+How RD2Mac is built, tested and shipped. To install the apps, see the
+[README](README.md).
+
+RD2Mac is a LocalSend replacement — **Android phone ⇄ macOS** file transfer over the
 LAN. You pick which phone and which Mac to pair, once, in each app; from then on
 each device talks only to its chosen counterpart (no picker on every send), and
 the pairing is remembered until you change it.
@@ -15,9 +18,11 @@ Two things it fixes vs LocalSend:
 
 ```
 rd2mac/
+├── README.md            # install guide for users (PT/EN)
 ├── PROTOCOL.md          # the HTTP wire contract (source of truth, both sides)
 ├── mac/                 # Swift: RD2MacCore lib + menu-bar app + `rd2mac` CLI
-│   └── build-app.sh     # build release → /Applications/RD2Mac.app + CLI in bin/
+│   ├── build-app.sh     # build release → /Applications/RD2Mac.app (CLI embedded)
+│   └── make-dmg.sh      # notarized DMG from the installed app (after --release)
 └── android/             # Kotlin: foreground service + HTTP server + share target
 ```
 
@@ -30,10 +35,26 @@ per-install id). See [PROTOCOL.md](PROTOCOL.md) for the wire contract.
 ```bash
 mac/build-app.sh
 ```
+Needs macOS 13+ on Apple Silicon and Xcode 15+ (or its Command Line Tools: Swift 5.9).
 Builds release and installs `RD2Mac.app` — with the `rd2mac` CLI **embedded in the
-bundle** — to `/Applications`. The app is a menu-bar agent (no Dock icon) and
-registers itself as a **login item** on first launch. To put the CLI on your PATH,
-use the app's **Install command-line tool…** menu item (see below).
+bundle** — to `/Applications`, plus a LaunchAgent that starts it at login (an
+installed DMG copy offers launch-at-login on first run instead). The app is a
+menu-bar agent (no Dock icon). To put the CLI on your PATH, use the app's **Install
+command-line tool…** menu item (see below).
+
+Machine-specific paths go in an optional, untracked `mac/local.env`, sourced by both
+scripts — e.g. to also copy the CLI somewhere and keep distributables elsewhere
+(default `mac/.build/dist`):
+```bash
+: "${RD2MAC_CLI_DEST:=$HOME/bin/rd2mac}"
+: "${RD2MAC_DIST_DIR:=$HOME/Desktop}"
+```
+
+**Distribution build:** `mac/build-app.sh --release` signs with the *Developer ID
+Application* certificate in your keychain (hardened runtime), notarizes through the
+notarytool Keychain profile `rd2mac-notary` (create it once with `xcrun notarytool
+store-credentials rd2mac-notary`) and staples; then `mac/make-dmg.sh` packs, signs and
+notarizes `RD2Mac.dmg`.
 
 First launch shows a **Local Network** permission prompt (macOS 15+) — allow it,
 or enable RD2Mac under *System Settings → Privacy & Security → Local Network*.
@@ -44,9 +65,15 @@ Tests: `swift test --package-path mac`
 ## Build & install — Android
 
 ```bash
-android/gradlew -p android assembleRelease   # JDK pinned via org.gradle.java.home in gradle.properties
+android/gradlew -p android assembleRelease   # Gradle runs on any installed JDK 17
 adb install -r android/app/build/outputs/apk/release/app-release.apk   # or sideload the APK
 ```
+Needs the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `android/local.properties`) and a
+JDK 17 anywhere Gradle can find it (`gradle/gradle-daemon-jvm.properties` picks it; JDK 26
+breaks Kotlin 1.9's version parser). Release signing reads `~/.config/rd2mac/keystore.properties`
+(`storeFile`, `storePassword`, `keyAlias`, `keyPassword`); without it the release APK
+comes out unsigned — sign it with your own key, or use `assembleDebug`.
+
 Open the app once to grant media + notification permissions and start the
 foreground service. **Developer mode is only needed to `adb install`** during
 development — normal use (and manual APK sideload) needs none, so banking/gov
@@ -107,42 +134,11 @@ can surface it as a one-click button. If it doesn't appear after a rebuild, run
 
 ## Driving it from an AI agent (Claude Code, etc.)
 
-RD2Mac ships a small `rd2mac` CLI **inside the app bundle**, built for exactly this:
-every pull **prints the saved file's path(s) to stdout**, so an AI agent with shell
-access can fetch things off the phone and immediately read them back — no touching the
-phone, no GUI. The loop is always *natural language → one `rd2mac` command → read the
-printed path(s)*.
-
-**1. Put the CLI on your PATH (once).** Click the RD2Mac menu-bar icon → **Install
-command-line tool…** (symlinks `rd2mac` into `/usr/local/bin`; it may ask for your
-password once). Verify with `rd2mac version`.
-
-**2. Teach your agent the tool.** An AI doesn't know `rd2mac` exists until you tell it
-— paste this into the agent's instructions (`CLAUDE.md`, a system prompt, a rule):
-
-> This Mac has `rd2mac`, a CLI that moves files between the Mac and my phone over the
-> LAN (the RD2Mac app must be running, the phone paired, both on the same Wi-Fi). Use
-> it whenever I ask to pull from or send to my phone:
-> - `rd2mac pull-screenshot [n]` — save my *n* latest screenshots to `~/Downloads` and
->   print each path (one per line); read those files to see them. Default n = 1.
-> - `rd2mac pull [image|video] [n]` — same, for the *n* latest gallery photos/videos.
-> - `rd2mac send <file>…` — send local file(s) to my phone (photos/videos land in the
->   gallery, anything else in Downloads).
->
-> After a pull, open each printed path to view the image(s).
-
-**How it plays out.** You say *"pull my last two screenshots and tell me what's in
-them"*; the agent runs one command, reads the printed paths, and describes them:
-
-```
-$ rd2mac pull-screenshot 2
-/Users/you/Downloads/Screenshot_2026-07-10.png
-/Users/you/Downloads/Screenshot_2026-07-10 (2).png
-```
-
-**Requirements:** the RD2Mac menu-bar app running, both devices paired and on the same
-Wi-Fi (see *Usage*). The CLI only talks to the app over loopback (port 53319); the app
-holds the encrypted link to the phone.
+The CLI is built for agents with shell access: every pull **prints the saved file's
+path(s) to stdout**, so the agent runs one `rd2mac` command and reads the files back.
+Setting it up, with the block to paste into the agent's instructions: the README's 🤖
+section ([English](README.md#-english)). The CLI only talks to the app over loopback
+(port 53319); the app holds the encrypted link to the phone.
 
 ## Self-update (both apps, since 0.6)
 
@@ -167,6 +163,9 @@ its own — the Mac app from `RD2Mac.dmg`, the phone from `RD2Mac.apk`.
 - **A release is now a contract.** Asset names `RD2Mac.dmg` / `RD2Mac.apk`; tag `vX.Y`
   equal to the apps' dotted versions; a higher Android `versionCode`. A release whose
   asset is not newer is remembered as rejected and not downloaded again.
+- **Forks.** The feed is this repository's releases (`Updates.latestURL` on the Mac, the
+  `rd2macUpdateFeed` property on Android). Point both at your own releases: a build
+  signed with another key can't install these updates anyway.
 - **Testing against a local feed.** Mac: `defaults write net.simioni.rd2mac updateFeedURL
   http://127.0.0.1:8766/latest.json` (delete it afterwards). Android: build with
   `-Prd2macUpdateFeed=http://10.0.2.2:8765/latest.json` (emulator → host).
@@ -191,3 +190,7 @@ its own — the Mac app from `RD2Mac.dmg`, the phone from `RD2Mac.apk`.
 - Diagnostic logs stay in release builds (local `logcat` only):
   `adb logcat -s RD2Mac.Clip:V RD2Mac.Discovery:V RD2Mac.Proximity:V` — the
   proximity tag prints raw beacon RSSI for threshold calibration.
+
+## License
+
+MIT — see [LICENSE](LICENSE). The app icon is not covered (see the README).

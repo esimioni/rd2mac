@@ -21,8 +21,8 @@ import java.util.concurrent.Executors
 
 /**
  * Sends what was shared AFTER the share screen is gone. A 147 MB video took 7 s behind
- * the old see-through share screen, which read as a black, frozen phone (Eduardo,
- * 29/09/2026). Batches go one at a time, in order, on the app process — the foreground
+ * the old see-through share screen, which read as a black, frozen phone (29/09/2026).
+ * Batches go one at a time, in order, on the app process — the foreground
  * service keeps it alive, so leaving the screen or clearing recents does not stop them.
  * Progress shows in a notification; the outcome in a toast, and in the notification when
  * it failed. Still no phantom sends: "sent ✓" only after the sealed HTTP 200.

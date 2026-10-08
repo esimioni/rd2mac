@@ -84,7 +84,7 @@ public enum UpdatePolicy {
 }
 
 public enum UpdateSchedule {
-    /// One check a day (Eduardo, 01/10/2026).
+    /// One check a day.
     public static let interval: TimeInterval = 24 * 60 * 60
 
     /// Due when never checked, a day after the last check, or when the clock went back

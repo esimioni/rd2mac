@@ -1,8 +1,8 @@
 import AppKit
 import RD2MacCore
 
-/// Self-update, checked once a day against the public GitHub release (Eduardo,
-/// 01/10/2026). A newer DMG is downloaded and checked against GitHub's digest, the app
+/// Self-update, checked once a day against the public GitHub release (since 0.6).
+/// A newer DMG is downloaded and checked against GitHub's digest, the app
 /// is copied out of it and accepted only when it is intact and signed like the running
 /// app (same identifier, same Developer ID team). Then, once no transfer has moved for
 /// a while, the bundle is swapped in place and the new copy relaunched — it waits for

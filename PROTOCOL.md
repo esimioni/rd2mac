@@ -24,7 +24,7 @@ macOS side (`mac/`) and the Android side (`android/`) implement exactly this.
 - Service type: `_rd2mac._tcp` (local domain).
 - TXT record keys: `id` (stable per-install UUID — the pairing key), `name`
   (human device name), `platform` (`macos` | `android`), `v` (protocol version,
-  currently `1`).
+  currently `2`).
 - Each side advertises its own server and browses for counterparts, keeping the
   **live list** of peers seen on the network (adding on resolve, dropping on
   `serviceLost`). The user picks one to pair with; that choice — matched by `id`,
@@ -52,7 +52,7 @@ macOS side (`mac/`) and the Android side (`android/`) implement exactly this.
 ### `GET /ping`
 Health + identity. Response `200 application/json`:
 ```json
-{ "id": "6F1C2D8E-4B7A-4E39-9C5D-2A8F3B1E7C40", "name": "My-Mac", "platform": "macos", "v": 1 }
+{ "id": "6F1C2D8E-4B7A-4E39-9C5D-2A8F3B1E7C40", "name": "My-Mac", "platform": "macos", "v": 2 }
 ```
 `id` is the stable per-install UUID (also in the TXT record). A peer from before
 `id` existed simply omits it; the field decodes tolerantly to `""`.

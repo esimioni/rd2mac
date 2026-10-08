@@ -74,7 +74,7 @@ object UpdatePolicy {
 }
 
 object UpdateSchedule {
-    /** One check a day (Eduardo, 01/10/2026). */
+    /** One check a day. */
     const val INTERVAL_MS = 24 * 60 * 60 * 1000L
 
     /** Due when never checked, a day after the last check, or when the clock went back
