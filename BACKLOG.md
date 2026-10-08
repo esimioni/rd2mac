@@ -9,6 +9,9 @@ a user-visible problem.
   outside a local feed (01/10). Nothing was installed by hand: `build-app.sh --release`
   now only stages and notarizes the bundle and `make-dmg.sh` packs that stage, so the
   build Mac stays on 0.6 until its own updater runs.
+- **Mac: ✅ updated itself, 08/10/2026 15:12.** Check forced (`updateLastCheck` deleted +
+  restart through launchd): tick at +60 s, new copy up 6 s later, 0.7 in `/Applications`
+  at +66 s, one process left, both extensions still enabled, phone found right after.
 - **First self-update on a real Samsung not yet seen.** The test phone (S23) runs 0.6
   with "Install unknown apps" NOT granted to RD2Mac, on purpose: this release shows
   whether One UI adds a prompt beyond the system's (only an AOSP emulator ran it).

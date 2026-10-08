@@ -10,7 +10,8 @@
 #
 # Machine-specific settings live in mac/local.env (untracked, optional), sourced below:
 #   RD2MAC_CLI_DEST  also copy the CLI to this path (unset = don't; the app's menu
-#                    "Install command-line tool…" puts it on the PATH anyway)
+#                    "Install command-line tool…" puts it on the PATH anyway). A copy
+#                    does NOT follow self-updates; a symlink into the app does.
 #   RD2MAC_DIST_DIR  where --release writes RD2Mac.zip (default mac/.build/dist)
 set -euo pipefail
 
@@ -150,7 +151,9 @@ pluginkit -a "$DEST_APP/Contents/PlugIns/FinderExtension.appex" 2>/dev/null || t
 pluginkit -e use -i net.simioni.rd2mac.FinderExtension 2>/dev/null || true
 killall Finder 2>/dev/null || true
 
-if [ -n "$CLI_DEST" ]; then
+# A symlink there (what the app's "Install command-line tool…" makes) already follows
+# the installed app — copying through it would overwrite the signed bundle's own CLI.
+if [ -n "$CLI_DEST" ] && [ ! -L "$CLI_DEST" ]; then
     echo "▶ Copying the CLI → ${CLI_DEST}…"
     mkdir -p "$(dirname "$CLI_DEST")"
     cp "$BIN_DIR/rd2mac" "$CLI_DEST"
@@ -186,7 +189,7 @@ echo "▶ Loading LaunchAgent (starts the app now + at login)…"
 launchctl bootstrap "$DOMAIN" "$AGENT" 2>/dev/null || launchctl load "$AGENT" 2>/dev/null || true
 
 echo "✓ Done. RD2Mac is running and will start at login."
-if [ -n "$CLI_DEST" ]; then echo "  CLI copied to $CLI_DEST"; fi
+if [ -n "$CLI_DEST" ] && [ ! -L "$CLI_DEST" ]; then echo "  CLI copied to $CLI_DEST"; fi
 echo "  To put the CLI on your PATH: menu-bar icon → Install command-line tool…"
 echo "  First run may prompt for Local Network — allow it, or enable RD2Mac"
 echo "  under System Settings → Privacy & Security → Local Network."

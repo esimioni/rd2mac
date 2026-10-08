@@ -44,7 +44,9 @@ command-line tool…** menu item (see below).
 
 Machine-specific paths go in an optional, untracked `mac/local.env`, sourced by both
 scripts — e.g. to also copy the CLI somewhere and keep distributables elsewhere
-(default `mac/.build/dist`):
+(default `mac/.build/dist`). A copied CLI does not follow the app's self-updates; a
+symlink to `/Applications/RD2Mac.app/Contents/Helpers/rd2mac` does, and the script
+leaves a symlink alone:
 ```bash
 : "${RD2MAC_CLI_DEST:=$HOME/bin/rd2mac}"
 : "${RD2MAC_DIST_DIR:=$HOME/Desktop}"
