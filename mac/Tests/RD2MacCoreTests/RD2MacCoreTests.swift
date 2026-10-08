@@ -682,6 +682,27 @@ final class ControlServiceTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode([ReceiveResult].self, from: response.body).count, 1)
     }
 
+    // Any web page can make the browser POST to 127.0.0.1 (it can't read the answer,
+    // but the send still happens) or reach the port under a rebound DNS name. Browsers
+    // label both: an Origin header, a Host that isn't loopback.
+    func testRefusesRequestsAWebPageCanMake() throws {
+        let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let router = ControlService(peerProvider: { nil }, client: HTTPClient(peerName: "Mac"),
+                                    downloadsDir: dir).makeRouter()
+        let crossSite = HTTPRequest(method: "POST", path: "/send", query: ["path": "/etc/hosts"],
+                                    headers: ["host": "127.0.0.1:53319", "origin": "https://evil.example"],
+                                    body: Data())
+        XCTAssertEqual(router(crossSite).status, 403)
+        let rebound = HTTPRequest(method: "GET", path: "/peer", query: [:],
+                                  headers: ["host": "evil.example:53319"], body: Data())
+        XCTAssertEqual(router(rebound).status, 403)
+        for host in ["127.0.0.1:53319", "localhost:53319", "[::1]:53319", "127.0.0.1"] {
+            let local = HTTPRequest(method: "GET", path: "/peer", query: [:],
+                                    headers: ["host": host], body: Data())
+            XCTAssertEqual(router(local).status, 404, "\(host) is ours: past the guard, no phone → 404")
+        }
+    }
+
     func testPullReturns404WhenNoPeer() throws {
         let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
         let control = ControlService(peerProvider: { nil },
@@ -1037,6 +1058,18 @@ final class ControlClientTests: XCTestCase {
         let outcome = await client.call("POST", "/pull-media?type=image&count=2", timeout: 5)
         XCTAssertEqual(outcome, .reply(status: 502, body: Data("pull failed: no items".utf8)))
         XCTAssertEqual(outcome.errorText, "pull failed: no items")
+    }
+
+    // The web-page guard must not catch our own callers: URLSession to 127.0.0.1 sends
+    // a loopback Host and no Origin (the CLI, both extensions and the Services menu).
+    func testTheRealClientGetsPastTheWebPageGuard() async throws {
+        let dir = try makeTempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let control = ControlService(peerProvider: { nil }, client: HTTPClient(peerName: "Mac"),
+                                     downloadsDir: dir)
+        let (server, client) = try startControl(control.makeRouter())
+        defer { server.stop() }
+        let outcome = await client.call("GET", "/peer", timeout: 5)
+        XCTAssertEqual(outcome, .reply(status: 404, body: Data("phone not found on the network".utf8)))
     }
 
     func testErrorTextNeverComesOutEmpty() {

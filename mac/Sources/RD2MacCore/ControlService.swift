@@ -2,7 +2,8 @@ import Foundation
 
 /// Loopback-only control API that the `rd2mac` CLI drives. It reuses the app's
 /// live discovered peer and its HTTP client, so the CLI never has to run Bonjour
-/// itself. Routes: `GET /peer`, `POST /pull-screenshot`, `POST /pull-media`.
+/// itself. Routes: `GET /peer`, `POST /pull-screenshot`, `POST /pull-media`,
+/// `POST /send`, `POST /send-file`.
 public final class ControlService {
     private let peerProvider: () -> ResolvedPeer?
     private let pairingProvider: () -> PairedPeer?
@@ -46,8 +47,25 @@ public final class ControlService {
         return "/send?path=\(encoded)"
     }
 
+    /// A request a web page made, not one of our local tools. Loopback binding does not
+    /// stop a browser: any site can POST to 127.0.0.1 (the page can't read the answer,
+    /// but the send still happens) or reach the port under a rebound DNS name. Browsers
+    /// label both — an Origin header, a Host that isn't loopback — and URLSession to
+    /// 127.0.0.1 (CLI, extensions, Services menu) sends neither.
+    static func isFromWebPage(_ request: HTTPRequest) -> Bool {
+        if request.header("Origin") != nil { return true }
+        guard let host = request.header("Host") else { return false }
+        let name = host.hasPrefix("[")
+            ? String(host.dropFirst().prefix { $0 != "]" })
+            : String(host.split(separator: ":").first ?? "")
+        return !["127.0.0.1", "localhost", "::1"].contains(name.lowercased())
+    }
+
     public func makeRouter() -> (HTTPRequest) -> HTTPResponse {
         return { [self] request in
+            if Self.isFromWebPage(request) {
+                return .text(403, "the control API only answers local tools")
+            }
             switch (request.method, request.path) {
             case ("GET", "/peer"):
                 return peerInfo()
