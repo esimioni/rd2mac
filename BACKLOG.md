@@ -3,27 +3,14 @@
 Accepted but not scheduled. Nothing here is urgent: they are hygiene, not fixes for
 a user-visible problem.
 
-## ⏭️ Next release (after 0.6)
+## ⏭️ 0.7 — the first real self-update (published 08/10/2026)
 
-- **It is the first real self-update test** (decided 06/10/2026): the next release goes
-  straight to GitHub and BOTH installed 0.6 apps must update themselves — so far it only
-  ran against a local feed (01/10). So nothing new is installed by hand first, no
-  `adb install` on the test phone, and ⚠️ **the Mac pipeline installs by itself** —
-  `build-app.sh --release` ends by replacing `/Applications/RD2Mac.app`, and `make-dmg.sh`
-  packs the DMG FROM `/Applications`. Before building, make the package come from the
-  staged bundle (`mac/.build/RD2Mac.app`) without installing, or the Mac half of the test
-  is gone before it starts.
-- **In `main`, not released yet:**
-  - a CLI pull retries a transport blip — the first pull after each update failed (sends
-    already retried), so it waits for the next release rather than a 0.6.1;
-  - the Mac no longer drops a dozing phone: a peer the browse stops confirming gets a
-    unicast `GET /ping` first. Before it, the 0.6 menu said "searching" — and
-    `rd2mac pull/send` answered "phone not found" — 3 times in ~4 h on 06/10/2026
-    (1.3 + 11.1 + 4.7 min) while the phone was in Doze;
-  - the Mac's control API refuses requests a web page makes (Origin header or a
-    non-loopback Host → 403).
-- **First self-update on a real Samsung not yet seen.** The test phone (S23) runs 0.6 with
-  "Install unknown apps" NOT granted to RD2Mac, on purpose: the next release shows
+- Both installed 0.6 apps must update themselves from this release — the first time
+  outside a local feed (01/10). Nothing was installed by hand: `build-app.sh --release`
+  now only stages and notarizes the bundle and `make-dmg.sh` packs that stage, so the
+  build Mac stays on 0.6 until its own updater runs.
+- **First self-update on a real Samsung not yet seen.** The test phone (S23) runs 0.6
+  with "Install unknown apps" NOT granted to RD2Mac, on purpose: this release shows
   whether One UI adds a prompt beyond the system's (only an AOSP emulator ran it).
 - **`hdiutil` is deprecated on macOS 27** (prints "use `diskutil image …`", still works
   01/10/2026). The updater's DMG mount and `make-dmg.sh` depend on it; the day it goes,
