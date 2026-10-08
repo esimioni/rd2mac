@@ -8,3 +8,17 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Machine-local, never published
+CLAUDE.local.md
+mac/local.env
+keystore.properties
+*.p8
+*.p12
+*.mobileprovision
+
+# IDE state
+.idea/
+*.iml
+.swiftpm/
+xcuserdata/

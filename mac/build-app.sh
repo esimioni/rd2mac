@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Build RD2Mac in release, assemble + ad-hoc sign the .app (with the `rd2mac` CLI
-# embedded in the bundle), install to /Applications, copy the CLI to ~/bin
-# for local dev, and install a LaunchAgent that starts it at login (KeepAlive only on
-# crash, so the menu's Quit still works). Re-run any time after changing the Mac source.
+# embedded in the bundle), install to /Applications, and install a LaunchAgent that
+# starts it at login (KeepAlive only on crash, so the menu's Quit still works).
+# Re-run any time after changing the Mac source.
+#
+# Machine-specific settings live in mac/local.env (untracked, optional), sourced below:
+#   RD2MAC_CLI_DEST  also copy the CLI to this path (unset = don't; the app's menu
+#                    "Install command-line tool…" puts it on the PATH anyway)
+#   RD2MAC_DIST_DIR  where --release writes RD2Mac.zip (default mac/.build/dist)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -10,7 +15,8 @@ APP_NAME="RD2Mac"
 LABEL="net.simioni.rd2mac"
 DEST_APP="/Applications/${APP_NAME}.app"
 EXEC="${DEST_APP}/Contents/MacOS/${APP_NAME}"
-CLI_DEST="$HOME/bin/rd2mac"
+[ -f "$HERE/local.env" ] && . "$HERE/local.env"
+CLI_DEST="${RD2MAC_CLI_DEST:-}"
 AGENT="$HOME/Library/LaunchAgents/${LABEL}.plist"
 DOMAIN="gui/$(id -u)"
 
@@ -21,7 +27,7 @@ DOMAIN="gui/$(id -u)"
 RELEASE=0
 [ "${1:-}" = "--release" ] && RELEASE=1
 NOTARY_PROFILE="rd2mac-notary"       # created once via `notarytool store-credentials`
-DIST_ZIP="$HOME/Desktop/RD2Mac.zip"
+DIST_ZIP="${RD2MAC_DIST_DIR:-$HERE/.build/dist}/RD2Mac.zip"
 
 echo "▶ Building release…"
 swift build -c release --package-path "$HERE"
@@ -134,9 +140,11 @@ pluginkit -a "$DEST_APP/Contents/PlugIns/FinderExtension.appex" 2>/dev/null || t
 pluginkit -e use -i net.simioni.rd2mac.FinderExtension 2>/dev/null || true
 killall Finder 2>/dev/null || true
 
-echo "▶ Installing CLI → ${CLI_DEST}…"
-mkdir -p "$(dirname "$CLI_DEST")"
-cp "$BIN_DIR/rd2mac" "$CLI_DEST"
+if [ -n "$CLI_DEST" ]; then
+    echo "▶ Copying the CLI → ${CLI_DEST}…"
+    mkdir -p "$(dirname "$CLI_DEST")"
+    cp "$BIN_DIR/rd2mac" "$CLI_DEST"
+fi
 
 echo "▶ Installing login LaunchAgent…"
 mkdir -p "$(dirname "$AGENT")"
@@ -168,8 +176,9 @@ echo "▶ Loading LaunchAgent (starts the app now + at login)…"
 launchctl bootstrap "$DOMAIN" "$AGENT" 2>/dev/null || launchctl load "$AGENT" 2>/dev/null || true
 
 echo "✓ Done. RD2Mac is running and will start at login."
-[ "$RELEASE" -eq 1 ] && echo "  Distributable (notarized + stapled): $DIST_ZIP — send this to family/friends."
-echo "  CLI: $CLI_DEST  (ensure ~/bin is on PATH)"
+if [ "$RELEASE" -eq 1 ]; then echo "  Distributable (notarized + stapled): $DIST_ZIP"; fi
+if [ -n "$CLI_DEST" ]; then echo "  CLI copied to $CLI_DEST"; fi
+echo "  To put the CLI on your PATH: menu-bar icon → Install command-line tool…"
 echo "  First run may prompt for Local Network — allow it, or enable RD2Mac"
 echo "  under System Settings → Privacy & Security → Local Network."
 echo "  Share menu: if RD2Mac doesn't appear, enable it under"

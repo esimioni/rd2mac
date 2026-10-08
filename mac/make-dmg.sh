@@ -5,9 +5,11 @@
 # which notarizes and installs the .app to /Applications.
 set -euo pipefail
 
+HERE="$(cd "$(dirname "$0")" && pwd)"
+[ -f "$HERE/local.env" ] && . "$HERE/local.env"   # optional machine settings (see build-app.sh)
 APP_NAME="RD2Mac"
 SRC_APP="/Applications/${APP_NAME}.app"
-OUT_DMG="$HOME/Desktop/${APP_NAME}.dmg"
+OUT_DMG="${RD2MAC_DIST_DIR:-$HERE/.build/dist}/${APP_NAME}.dmg"
 NOTARY_PROFILE="rd2mac-notary"
 
 [ -d "$SRC_APP" ] || { echo "✗ $SRC_APP not found — run build-app.sh --release first." >&2; exit 1; }
