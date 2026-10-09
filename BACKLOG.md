@@ -12,9 +12,16 @@ a user-visible problem.
 - **Mac: ✅ updated itself, 08/10/2026 15:12.** Check forced (`updateLastCheck` deleted +
   restart through launchd): tick at +60 s, new copy up 6 s later, 0.7 in `/Applications`
   at +66 s, one process left, both extensions still enabled, phone found right after.
-- **First self-update on a real Samsung not yet seen.** The test phone (S23) runs 0.6
-  with "Install unknown apps" NOT granted to RD2Mac, on purpose: this release shows
-  whether One UI adds a prompt beyond the system's (only an AOSP emulator ran it).
+- **Phone (S23, One UI): ✅ updated, 08/10/2026.** Its daily check found 0.7 at 18:38
+  (~3.5 h after the release) and posted "RD2Mac update ready". Without "Install unknown
+  apps" granted, the first update went: notification → system "Permission required" →
+  Settings toggle → "Update this app?" → **Google Play Protect "App scan recommended"**
+  (*Scan app* / *Don't install app*, equally prominent) → "This app looks safe" →
+  *Install*. The Play Protect pair is what the AOSP emulator never showed; the README's
+  update steps now name it.
+- **Next release: is the phone silent now?** The permission is granted, so 0.8 should
+  install with no prompt (`USER_ACTION_NOT_REQUIRED`) — unless Play Protect asks to scan
+  every APK it hasn't seen. Watch it then.
 - **`hdiutil` is deprecated on macOS 27** (prints "use `diskutil image …`", still works
   01/10/2026). The updater's DMG mount and `make-dmg.sh` depend on it; the day it goes,
   the Mac self-update fails with only a log line → move to `diskutil image attach/eject`.

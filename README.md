@@ -91,7 +91,7 @@ Se você usa um **assistente de IA com acesso ao terminal** do computador (como 
 A partir da versão **0.6**, o RD2Mac se **atualiza sozinho** nos dois aparelhos — ele confere uma vez por dia se há versão nova.
 
 - **No Mac:** não precisa fazer nada. O app baixa a versão nova, se troca e reabre sozinho.
-- **No telefone:** na **primeira** atualização aparece a notificação **"Atualização do RD2Mac pronta"**. Toque nela e siga o que o Android pedir: permitir que o **RD2Mac** instale atualizações (**Permitir desta fonte**) e confirmar. Das próximas vezes ele se atualiza sozinho, sem perguntar. O telefone só baixa atualizações no **Wi-Fi**.
+- **No telefone:** na **primeira** atualização aparece a notificação **"Atualização do RD2Mac pronta"**. Toque nela e siga o que o Android pedir: permitir que o **RD2Mac** instale atualizações (**Permitir desta fonte**) e confirmar. Pode aparecer também o **Google Play Protect** recomendando verificar o app: aceite a verificação e, quando ele disser que o app parece seguro, toque em **Instalar** (cuidado para não tocar em *não instalar*). Das próximas vezes ele se atualiza sozinho, sem perguntar. O telefone só baixa atualizações no **Wi-Fi**.
 
 > Tem uma versão anterior à 0.6? Instale a 0.6 uma vez pelos links acima, por cima da que você tem — o pareamento continua. Daí em diante é automático.
 
@@ -183,7 +183,7 @@ If you use an **AI assistant with terminal access** on your computer (like **Cla
 From version **0.6** on, RD2Mac **updates itself** on both devices — it checks once a day for a new version.
 
 - **On the Mac:** nothing to do. The app downloads the new version, swaps itself and reopens.
-- **On the phone:** the **first** update shows the notification **"RD2Mac update ready"**. Tap it and follow what Android asks: let **RD2Mac** install updates (**Allow from this source**) and confirm. From then on it updates by itself, without asking. The phone only downloads updates on **Wi-Fi**.
+- **On the phone:** the **first** update shows the notification **"RD2Mac update ready"**. Tap it and follow what Android asks: let **RD2Mac** install updates (**Allow from this source**) and confirm. **Google Play Protect** may also recommend scanning the app: tap **Scan app** and, once it says the app looks safe, **Install** (not *Don't install app*). From then on it updates by itself, without asking. The phone only downloads updates on **Wi-Fi**.
 
 > On a version older than 0.6? Install 0.6 once from the links above, over the one you have — your pairing stays. From then on it's automatic.
 
