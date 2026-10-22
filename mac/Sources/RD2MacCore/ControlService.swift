@@ -29,7 +29,7 @@ public final class ControlService {
         var c = client
         if let p = pairingProvider() {
             c.token = p.token
-            c.keyBytes = Data(base64Encoded: p.key)
+            c.keyBytes = p.keyBytes
         }
         return c
     }

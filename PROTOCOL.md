@@ -156,6 +156,38 @@ so ship the skip support on both sides together to avoid duplicate pulls.
 Like `/screenshot/latest` but for the `skip`-th most recent gallery item of the
 given type (`type` defaults to `image`, `skip` to `0`). Same response shape.
 
+## BLE proximity beacon
+
+What the phone's proximity gate listens for (see `POST /proximity`). While the
+app runs and is paired, the Mac advertises **one 128-bit service UUID and no other
+data** — its pairing's UUID for the current UTC day:
+
+```
+day  = floor(unix_seconds / 86400)            # changes at 00:00 UTC
+uuid = HKDF-SHA256(ikm  = the pairing's 32-byte AES key,
+                   salt = "RD2Mac/v1",
+                   info = "rd2mac-beacon:" + decimal(day),
+                   L    = 16)                 # as 8-4-4-4-12 lowercase hex
+```
+
+Only the two paired devices can compute it (the key never travels), so a phone
+ignores every other RD2Mac Mac in range, and the daily change keeps a passer-by
+from following one Mac across days. The Mac re-checks every 5 min and on every
+pairing change; unpaired, it advertises nothing. The phone scans for the UUIDs of
+`day − 1`, `day` and `day + 1` (clocks needn't agree to the second).
+
+Vector — key `69014a103caa297b1137fcb9af45669c2c408327ee7eb8ae7600be3345e1b4dc`
+(the session of the fixed-key test vector), day `20748` (2026-10-22):
+`0d3026bc-bf45-2070-8fe3-5797dac96374`; day `20749`:
+`49dec7fe-09e1-b7ae-139b-cdf8c2ec253f`.
+
+Up to 0.7 every Mac advertised the same fixed UUID
+(`cd8a379d-ddd9-4f84-8a70-98aa480baee3`), so the phone took any RD2Mac Mac
+nearby for its own. Mixed versions don't hear each other: a 0.8 phone ignores a
+0.7 Mac and a 0.7 phone doesn't see a 0.8 Mac — the gate reads "far" (automatic
+clipboard paused; manual sends unaffected) until both sides update. The HTTP
+protocol is unchanged, so `v` stays 2.
+
 ## Reliability contract (the phantom-send fix)
 
 1. A sender considers a transfer successful **only** on an HTTP `200` whose

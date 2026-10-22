@@ -16,6 +16,7 @@ public enum RD2Crypto {
     private static let encInfo = Data("rd2mac-enc".utf8)
     private static let authInfo = Data("rd2mac-auth".utf8)
     private static let sasInfo = Data("rd2mac-sas".utf8)
+    private static let beaconInfo = "rd2mac-beacon:"
 
     /// Everything derived from a completed key agreement.
     public struct Session: Equatable {
@@ -54,6 +55,17 @@ public enum RD2Crypto {
         let sasBytes = derive(sasInfo, 4)
         let n = sasBytes.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) } % 1_000_000
         return Session(keyBytes: keyBytes, token: token, sas: String(format: "%06u", n))
+    }
+
+    /// The paired Mac's BLE beacon for UTC `day`: a 128-bit service UUID only this
+    /// pairing can compute (HKDF of the session key, which never travels), so the
+    /// phone tells its Mac from any other RD2Mac Mac, and a passer-by can't follow
+    /// the beacon from one day to the next.
+    public static func beaconUUID(keyBytes: Data, day: Int64) -> String {
+        let bytes = HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: keyBytes), salt: salt,
+                                           info: Data("\(beaconInfo)\(day)".utf8), outputByteCount: 16)
+            .withUnsafeBytes { $0.load(as: uuid_t.self) }
+        return UUID(uuid: bytes).uuidString.lowercased()
     }
 
     /// AES-GCM seal → [nonce(12)‖ciphertext‖tag(16)].

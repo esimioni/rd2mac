@@ -107,6 +107,22 @@ class ProximityReporter(private val keepaliveMs: Long = 60_000L) {
 }
 
 /**
+ * Which beacon the phone listens for: its own pairing's ([RD2Crypto.beaconUuid]),
+ * which the Mac rotates at 00:00 UTC. Every Mac used to advertise one shared UUID,
+ * so a second RD2Mac Mac in the house counted as "my Mac" (2026-10-22). Pure;
+ * mirror of the Swift `ProximityBeacon`.
+ */
+object ProximityBeacon {
+    private const val DAY_MS = 86_400_000L
+
+    fun day(epochMs: Long): Long = Math.floorDiv(epochMs, DAY_MS)
+
+    /** Yesterday's, today's and tomorrow's: the two clocks needn't agree to the second. */
+    fun uuidsAround(keyBytes: ByteArray, nowMs: Long): List<String> =
+        (-1L..1L).map { RD2Crypto.beaconUuid(keyBytes, day(nowMs) + it) }
+}
+
+/**
  * When the monitor spends scan results. Samsung's Bluetooth stack counts the
  * results each app receives with the screen OFF (1/4/8 h windows) and Device
  * care lists the app as a battery hog past its limit, offering to restrict it —
@@ -154,6 +170,9 @@ object BurstPolicy {
 class ProximityMonitor(
     context: Context,
     private val gate: ProximityGate,
+    /** The paired Mac's beacon UUIDs right now ([ProximityBeacon]); empty = no
+     *  pairing key, nothing to listen for. Asked at every burst (day rotation). */
+    private val beaconUuids: () -> List<String>,
     private val onEvaluate: (near: Boolean) -> Unit = {},
 ) {
 
@@ -258,14 +277,18 @@ class ProximityMonitor(
             Log.w(TAG, "BLE unavailable (Bluetooth off?) — next burst retries")
             return
         }
-        val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid.fromString(RD2Mac.BLE_SERVICE_UUID))
-            .build()
+        val filters = beaconUuids().map {
+            ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(it)).build()
+        }
+        if (filters.isEmpty()) {
+            Log.w(TAG, "no pairing key — no beacon to listen for")
+            return
+        }
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)   // continuous RX, but only for the burst
             .build()
         try {
-            scanner.startScan(listOf(filter), settings, callback)
+            scanner.startScan(filters, settings, callback)
             scanning = true
             lastStartAt = SystemClock.elapsedRealtime()
         } catch (e: SecurityException) {

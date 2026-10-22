@@ -955,6 +955,17 @@ final class PairingTests: XCTestCase {
         PairingStore(defaults: UserDefaults(suiteName: suite)!)
     }
 
+    /// The stored key as bytes — the beacon and the sealed bodies derive from it.
+    /// Same rule as the Android `RD2Crypto.keyBytes`: a 32-byte key, or nothing.
+    func testKeyBytesOnlyForAWholeKey() {
+        let key = Data(repeating: 0x07, count: 32)
+        func peer(_ k: String) -> PairedPeer { PairedPeer(id: "a", name: "S23", host: "", port: 1, token: "t", key: k) }
+        XCTAssertEqual(peer(key.base64EncodedString()).keyBytes, key)
+        XCTAssertNil(peer("").keyBytes)                                  // paired before E2E
+        XCTAssertNil(peer(Data(repeating: 0x07, count: 16).base64EncodedString()).keyBytes)
+        XCTAssertNil(peer("not base64!").keyBytes)
+    }
+
     func testDeviceIdIsStableAndPersists() {
         let (s, suite) = makeStore()
         defer { UserDefaults().removePersistentDomain(forName: suite) }
@@ -1028,6 +1039,21 @@ final class CryptoTests: XCTestCase {
         print("RD2VEC key=\(sA.keyBytes.map { String(format: "%02x", $0) }.joined())")
         print("RD2VEC token=\(sA.token)")
         print("RD2VEC sas=\(sA.sas)")
+    }
+
+    /// The paired Mac's BLE beacon, from the session the fixed keys above agree on.
+    /// Same vector as the Android `RD2CryptoTest`, computed a third time by an
+    /// independent HKDF (Python).
+    func testBeaconUUIDMatchesTheSharedVector() throws {
+        let a = try P256.KeyAgreement.PrivateKey(rawRepresentation: privARaw)
+        let b = try P256.KeyAgreement.PrivateKey(rawRepresentation: privBRaw)
+        let session = try RD2Crypto.agree(privateKey: a, peerPublicKeyBase64: RD2Crypto.publicKeyBase64(b))
+        XCTAssertEqual(RD2Crypto.beaconUUID(keyBytes: session.keyBytes, day: 20748),
+                       "0d3026bc-bf45-2070-8fe3-5797dac96374")
+        XCTAssertEqual(RD2Crypto.beaconUUID(keyBytes: session.keyBytes, day: 20749),
+                       "49dec7fe-09e1-b7ae-139b-cdf8c2ec253f")
+        XCTAssertEqual(RD2Crypto.beaconUUID(keyBytes: Data(repeating: 0xAB, count: 32), day: 20748),
+                       "87a935d2-3bc6-e98e-7d7e-356a39bad656")
     }
 
     func testSealOpenRoundTrip() throws {
@@ -1405,4 +1431,22 @@ private func makeTempDir() throws -> URL {
         .appendingPathComponent("rd2mac-tests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
+}
+
+/// Which beacon the Mac advertises. Every RD2Mac Mac used to advertise the same UUID,
+/// so a phone heard a second Mac in the house as its own (2026-10-22: −74 dBm with
+/// the paired Mac's app quit). Now each pairing has its own, rotated at 00:00 UTC.
+final class ProximityBeaconTests: XCTestCase {
+    private let midnightUTC = Date(timeIntervalSince1970: 1_792_627_200)   // 2026-10-22T00:00:00Z = day 20748
+    private let key = Data(repeating: 0xAB, count: 32)
+
+    func testDayChangesAtMidnightUTC() {
+        XCTAssertEqual(ProximityBeacon.day(for: midnightUTC), 20748)
+        XCTAssertEqual(ProximityBeacon.day(for: midnightUTC.addingTimeInterval(-0.001)), 20747)
+    }
+
+    func testAdvertisesTodaysUUID() {
+        XCTAssertEqual(ProximityBeacon.uuid(keyBytes: key, at: midnightUTC.addingTimeInterval(12 * 3600)),
+                       RD2Crypto.beaconUUID(keyBytes: key, day: 20748))
+    }
 }

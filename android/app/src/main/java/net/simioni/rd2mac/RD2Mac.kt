@@ -6,8 +6,6 @@ object RD2Mac {
     /** v2: sealed /receive response + sealed filename headers on paired transfers. */
     const val PROTOCOL_VERSION = 2
     const val DEFAULT_PORT = 53318
-    /** BLE beacon the Mac advertises (proximity gate); mirror of the Swift constant. */
-    const val BLE_SERVICE_UUID = "cd8a379d-ddd9-4f84-8a70-98aa480baee3"
 
     object Header {
         const val TOKEN = "X-RD2Mac-Token"

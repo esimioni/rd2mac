@@ -15,9 +15,6 @@ public enum RD2Mac {
     public static let defaultPort: UInt16 = 53318
     /// Loopback-only control port the `rd2mac` CLI talks to (never on the LAN).
     public static let controlPort: UInt16 = 53319
-    /// BLE beacon the Mac advertises so the phone can gate clipboard sync on
-    /// proximity (RSSI). Mirror of the Kotlin constant.
-    public static let bleServiceUUID = "cd8a379d-ddd9-4f84-8a70-98aa480baee3"
 
     public enum Header {
         public static let token = "X-RD2Mac-Token"

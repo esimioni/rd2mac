@@ -91,7 +91,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                              platform: .macos)
     private let port = RD2Mac.defaultPort
     private let services = ServiceProvider()
-    private let proximity = ProximityAdvertiser()
+    private lazy var proximity = ProximityAdvertiser { [weak self] in self?.pairing.pairedPeer?.keyBytes }
     private var updater: Updater?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -439,6 +439,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             await MainActor.run {
                 self.showSAS(session.sas, peerName: peer.name) {
                     self.pairing.pair(peer, session: session)
+                    self.proximity.refresh()
                     self.rebuildMenu()
                 }
             }
@@ -457,6 +458,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.async {
             self.showSAS(session.sas, peerName: msg.name) {
                 self.pairing.pair(id: msg.id, name: msg.name, session: session, port: self.port)
+                self.proximity.refresh()
                 self.rebuildMenu()
             }
         }
@@ -530,6 +532,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func forgetPeer() {
         pairing.forget()
+        proximity.refresh()
         rebuildMenu()
     }
 

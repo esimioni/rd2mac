@@ -31,6 +31,16 @@ class RD2CryptoTest {
         assertEquals(expectedKey, sB.keyBytes.joinToString("") { "%02x".format(it) })
     }
 
+    /** The paired Mac's BLE beacon, from the session key above. Same vector as the
+     *  Swift `CryptoTests`, computed a third time by an independent HKDF (Python). */
+    @Test fun beaconUuidMatchesTheSharedVector() {
+        val key = expectedKey.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        assertEquals("0d3026bc-bf45-2070-8fe3-5797dac96374", RD2Crypto.beaconUuid(key, day = 20748))
+        assertEquals("49dec7fe-09e1-b7ae-139b-cdf8c2ec253f", RD2Crypto.beaconUuid(key, day = 20749))
+        assertEquals("87a935d2-3bc6-e98e-7d7e-356a39bad656",
+            RD2Crypto.beaconUuid(ByteArray(32) { 0xAB.toByte() }, day = 20748))
+    }
+
     @Test fun sealOpenRoundTrip() {
         val key = ByteArray(32) { 0xAB.toByte() }
         val msg = "secret payload".toByteArray()

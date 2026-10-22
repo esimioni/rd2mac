@@ -31,6 +31,7 @@ object RD2Crypto {
     private val ENC_INFO = "rd2mac-enc".toByteArray()
     private val AUTH_INFO = "rd2mac-auth".toByteArray()
     private val SAS_INFO = "rd2mac-sas".toByteArray()
+    private const val BEACON_INFO = "rd2mac-beacon:"
 
     class Session(val keyBytes: ByteArray, val token: String, val sas: String) {
         override fun equals(other: Any?): Boolean {
@@ -103,6 +104,16 @@ object RD2Crypto {
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"),
             GCMParameterSpec(TAG_BYTES * 8, blob.copyOfRange(0, NONCE_BYTES)))
         return cipher.doFinal(blob.copyOfRange(NONCE_BYTES, blob.size))
+    }
+
+    /** The paired Mac's BLE beacon for UTC [day]: a 128-bit service UUID only this
+     *  pairing can compute (HKDF of the session key, which never travels), so the
+     *  phone tells its Mac from any other RD2Mac Mac, and a passer-by can't follow
+     *  the beacon from one day to the next. */
+    fun beaconUuid(keyBytes: ByteArray, day: Long): String {
+        val hex = hkdf(keyBytes, "$BEACON_INFO$day".toByteArray(), 16).joinToString("") { "%02x".format(it) }
+        return "${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-" +
+            "${hex.substring(16, 20)}-${hex.substring(20)}"
     }
 
     /** RFC 5869 HKDF-SHA256 (extract + expand). */

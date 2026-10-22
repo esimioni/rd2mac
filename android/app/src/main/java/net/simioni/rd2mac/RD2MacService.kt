@@ -21,6 +21,7 @@ import androidx.core.app.NotificationCompat
 import net.simioni.rd2mac.http.HttpServer
 import net.simioni.rd2mac.net.ClipboardGate
 import net.simioni.rd2mac.net.ClipboardLoopGuard
+import net.simioni.rd2mac.net.ProximityBeacon
 import net.simioni.rd2mac.net.ProximityClient
 import net.simioni.rd2mac.net.ProximityGate
 import net.simioni.rd2mac.net.ProximityMonitor
@@ -207,6 +208,10 @@ class RD2MacService : Service() {
                 this,
                 ProximityGate(rssi, ttlMs = ProximityMonitor.TTL_MS,
                     hysteresis = net.simioni.rd2mac.net.ProximityLevels.hysteresisFor(rssi)),
+                beaconUuids = {
+                    keyBytes()?.let { ProximityBeacon.uuidsAround(it, System.currentTimeMillis()) }
+                        ?: emptyList()
+                },
             ) { near -> onProximityEvaluated(near) }.also { it.start() }
         } else {
             if (RD2MacState.proximityNear) {

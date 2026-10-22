@@ -16,6 +16,13 @@ public struct PairedPeer: Codable, Equatable, Sendable {
     /// content of every transfer so nothing is readable on the wire.
     public var key: String
 
+    /// `key` as bytes: a whole AES-256 key or nothing (a pairing from before E2E,
+    /// or a damaged value). Mirror of the Android `RD2Crypto.keyBytes`.
+    public var keyBytes: Data? {
+        guard let data = Data(base64Encoded: key), data.count == 32 else { return nil }
+        return data
+    }
+
     public init(id: String, name: String, host: String, port: UInt16,
                 token: String, key: String = "") {
         self.id = id
