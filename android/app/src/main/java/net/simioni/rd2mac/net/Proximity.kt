@@ -115,8 +115,9 @@ class ProximityReporter(private val keepaliveMs: Long = 60_000L) {
  *  - a burst stops at the first reading that renews the gate (1 result, not ~25);
  *  - screen off + near: keep scanning — "near" stays alive while the phone sits
  *    dark on the desk, and the gate still notices it leave;
- *  - screen off + far: don't — arming "near" for a phone nobody is looking at
- *    buys nothing; the screen coming on scans at once instead (a kick).
+ *  - screen off + far: don't, and stop a burst already running when the screen
+ *    goes dark — arming "near" for a phone nobody is looking at buys nothing;
+ *    the screen coming on scans at once instead (a kick).
  * Pure, unit-tested.
  */
 object BurstPolicy {
@@ -144,7 +145,7 @@ object BurstPolicy {
  *    so battery is a wash while detection *during* a burst is immediate.
  * The gate's TTL must span at least two cycles so a single missed burst (RF
  * fluke) doesn't flap the state to "far". A burst ends early once the gate has
- * its answer, and a far gate skips bursts while the screen is off ([BurstPolicy]).
+ * its answer, and a far gate doesn't scan while the screen is off ([BurstPolicy]).
  *
  * [onEvaluate] fires on the main thread every [EVAL_MS] with the current state,
  * driving the UI and the Mac status reports — including the decay to "far" when
@@ -193,16 +194,28 @@ class ProximityMonitor(
     }
     private val burstStop = Runnable { stopScanNow() }
 
-    /** A far gate skipped its bursts while the screen was off: scan now, and
-     *  restart the cycle from here. */
-    private val screenOn = object : BroadcastReceiver() {
+    /** Screen on: a far gate skipped its bursts in the dark — scan now, and
+     *  restart the cycle from here. Screen off: a far gate's running burst stops
+     *  (one started while the screen was on, or a kick by a notification's
+     *  edge lighting, kept collecting dark results: 8–12 each, 2026-10-22). */
+    private val screenChanges = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (!running || scanning) return
-            val since = lastStartAt?.let { SystemClock.elapsedRealtime() - it } ?: Long.MAX_VALUE
-            if (!BurstPolicy.shouldKick(isNear(), since)) return
-            Log.i(TAG, "screen on, gate far — scanning now")
-            handler.removeCallbacks(burstStart)
-            handler.post(burstStart)
+            if (!running) return
+            when (intent.action) {
+                Intent.ACTION_SCREEN_ON -> {
+                    if (scanning) return
+                    val since = lastStartAt?.let { SystemClock.elapsedRealtime() - it } ?: Long.MAX_VALUE
+                    if (!BurstPolicy.shouldKick(isNear(), since)) return
+                    Log.i(TAG, "screen on, gate far — scanning now")
+                    handler.removeCallbacks(burstStart)
+                    handler.post(burstStart)
+                }
+                Intent.ACTION_SCREEN_OFF -> {
+                    if (!scanning || BurstPolicy.shouldScan(screenOn = false, near = isNear())) return
+                    Log.i(TAG, "screen off, gate far — burst stopped")
+                    stopScanNow()
+                }
+            }
         }
     }
     private val evaluate = object : Runnable {
@@ -216,15 +229,16 @@ class ProximityMonitor(
     fun start() {
         if (running) return
         running = true
-        // ACTION_SCREEN_ON only reaches receivers registered at runtime.
-        appContext.registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON),
+        // Screen on/off only reach receivers registered at runtime.
+        appContext.registerReceiver(screenChanges,
+            IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) },
             Context.RECEIVER_NOT_EXPORTED)
         handler.post(burstStart)
         handler.post(evaluate)
     }
 
     fun stop() {
-        if (running) appContext.unregisterReceiver(screenOn)
+        if (running) appContext.unregisterReceiver(screenChanges)
         running = false
         handler.removeCallbacks(burstStart)
         handler.removeCallbacks(burstStop)

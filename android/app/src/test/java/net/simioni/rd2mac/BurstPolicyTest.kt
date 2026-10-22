@@ -22,6 +22,7 @@ class BurstPolicyTest {
         assertTrue(BurstPolicy.shouldScan(screenOn = false, near = true))
     }
 
+    /** Also asked when the screen goes dark mid-burst: a far gate stops it there. */
     @Test fun screenOffFarGateDoesNotScan() {
         assertFalse(BurstPolicy.shouldScan(screenOn = false, near = false))
     }

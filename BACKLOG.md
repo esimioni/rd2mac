@@ -93,17 +93,31 @@ Each 6 s LOW_LATENCY burst heard the Mac's beacon ~25 times, so the night averag
 `EXCESSIVE_BLUETOOTH_SCAN` nearly every night since 2026-09-17 (51 entries).
 
 What shipped: a burst stops at the first reading that renews the gate (1 result to
-keep "near", 3 to arm it), and a far gate doesn't scan while the screen is off — the
-screen coming on scans at once (`BurstPolicy` in `Proximity.kt`).
+keep "near", 3 to arm it), and a far gate doesn't scan while the screen is off — no
+new burst, and a running one stops when the screen goes dark; the screen coming on
+scans at once (`BurstPolicy` in `Proximity.kt`).
 
 Seen on the S23 the same day (local build): bursts that keep "near" took 1 result in
 0.04–0.3 s, screen off included (it had been 26–28 results in 6 s); arming took 3; the
-screen-on scan fired the instant the screen lit with the gate far; the 8 h window fell
-from HIGH to MEDIUM within the hour. Not yet seen on the device: a far gate skipping its
-bursts in the dark — the phone was woken or unplugged every time. Check it with the phone
-left alone: Mac app quit until the gate is far, screen off ~2 min, then the app's last
-scans in `dumpsys bluetooth_manager`, read before waking it. (`batterystats --history`
-can't tell: its `ble_scan` flag is device-wide, and Play services scans almost nonstop.)
+screen-on scan fired the instant the screen lit with the gate far; a far gate left
+alone in the dark started no burst for 90 s; a burst stopped 0.25 s after the screen went
+dark (it used to run its 6 s: 8–12 dark results each when a beacon was in earshot —
+notification "glimpse"/edge lighting lights the screen and fires `ACTION_SCREEN_ON`
+too). Screen-off results: 2 in the 2 h after the update; the 8 h window fell from HIGH
+to MEDIUM within the hour and to LOW in two. Device care kept showing the 09:36
+detection all afternoon — it doesn't re-judge the app when its behaviour changes.
+
+## 5. The beacon has no identity — any RD2Mac Mac nearby counts as "my Mac" — DECIDE
+
+Every Mac running RD2Mac advertises the same service UUID and nothing else
+(`ProximityAdvertiser`), so the phone can't tell its paired Mac from another one. Seen
+2026-10-22: with the paired Mac's app quit, the S23 kept hearing the beacon at −74 dBm
+from 14:23 to at least 14:26 (gone by 14:32) — another RD2Mac Mac in range. Cost today: weak readings that never renew
+the gate keep a burst listening its full 6 s. Risk: near enough to SOMEONE ELSE's
+RD2Mac Mac, the gate reads "near" and keeps the paired Mac's clipboard flowing to the
+phone. Way out: a per-pairing beacon both sides derive from the pairing key (macOS
+advertises only service UUIDs and a local name) — a wire change for both apps, shipped
+together with the old UUID kept until old phones are gone.
 
 ## 1. Long-poll on `GET /clipboard` — no usability impact
 
