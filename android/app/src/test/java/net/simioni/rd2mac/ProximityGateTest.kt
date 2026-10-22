@@ -117,4 +117,46 @@ class ProximityGateTest {
         assertTrue("one missed burst must not flap", g.isNear(nowMs = 2 * ProximityMonitor.CYCLE_MS))
         assertFalse("two misses = really gone", g.isNear(nowMs = 3 * ProximityMonitor.CYCLE_MS))
     }
+
+    // MARK: when a burst has its answer (the monitor stops scanning there). A 6 s
+    // LOW_LATENCY burst hears the Mac's beacon ~25 times; with the screen off,
+    // Samsung counts every one against the app — 737 results/h overnight put
+    // RD2Mac on Device care's "high battery usage" list (2026-10-22).
+
+    @Test fun aReadingThatKeepsNearAnswersTheBurst() {
+        val g = gate()
+        g.strongBurst(0)
+        g.onReading(rssi = -60, nowMs = 60_000)
+        assertTrue(g.renewedAt(nowMs = 60_000))
+    }
+
+    @Test fun onlyTheArmingReadingAnswersAFarBurst() {
+        val g = gate()
+        g.onReading(rssi = -60, nowMs = 0)
+        assertFalse(g.renewedAt(nowMs = 0))
+        g.onReading(rssi = -60, nowMs = 300)
+        assertFalse(g.renewedAt(nowMs = 300))
+        g.onReading(rssi = -60, nowMs = 600)
+        assertTrue("the 3rd strong reading arms near", g.renewedAt(nowMs = 600))
+    }
+
+    /** Near still holds from the last burst, but this reading didn't extend it —
+     *  stopping here would let the gate decay with a good reading still to come. */
+    @Test fun aReadingTooWeakToKeepNearLeavesTheBurstListening() {
+        val g = gate()
+        g.strongBurst(0)
+        g.onReading(rssi = -90, nowMs = 60_000)   // below -75 - 8
+        assertTrue(g.isNear(nowMs = 60_000))
+        assertFalse(g.renewedAt(nowMs = 60_000))
+    }
+
+    @Test fun aSpikeWhileFarLeavesTheBurstListening() {
+        val g = gate()
+        g.onReading(rssi = -50, nowMs = 0)
+        assertFalse(g.renewedAt(nowMs = 0))
+    }
+
+    @Test fun nothingHeardAnswersNothing() {
+        assertFalse(gate().renewedAt(nowMs = 0))
+    }
 }

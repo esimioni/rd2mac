@@ -3,6 +3,12 @@
 Accepted but not scheduled. Nothing here is urgent: they are hygiene, not fixes for
 a user-visible problem.
 
+## ⏭️ 0.8 — not released yet
+
+- Android: the proximity gate no longer piles up the screen-off scan results that made
+  Samsung's Device care call RD2Mac a battery hog — see *2026-10-22 — Samsung's own
+  detector* below.
+
 ## ⏭️ 0.7 — the first real self-update (published 08/10/2026)
 
 - Both installed 0.6 apps must update themselves from this release — the first time
@@ -74,6 +80,30 @@ phone's Wi-Fi or app — two wasted rounds on 11/08 before pinging the phone.
 That session's real drain was another app holding a partial wakelock for ~3 h with the
 screen off. **Do not re-open the "is RD2Mac eating the battery" question without new
 measurements** — this one is answered.
+
+### 2026-10-22 — Samsung's own detector flagged the BLE gate (fixed)
+
+Device care listed RD2Mac under "High battery usage" and offered to switch it to
+Optimized — which would undo the exemption the service needs to stay up. The energy
+answer above still held (`batterystats`: 2.13 mAh of 775, 0.27%), but Samsung's
+Bluetooth stack judges something else: the scan RESULTS an app receives with the screen
+OFF, per 1/4/8 h window (`dumpsys bluetooth_manager` → `Current Consumption Severities`).
+Each 6 s LOW_LATENCY burst heard the Mac's beacon ~25 times, so the night averaged
+737 results/h → HIGH in the 8 h window → `dumpsys sdhms` logged
+`EXCESSIVE_BLUETOOTH_SCAN` nearly every night since 2026-09-17 (51 entries).
+
+What shipped: a burst stops at the first reading that renews the gate (1 result to
+keep "near", 3 to arm it), and a far gate doesn't scan while the screen is off — the
+screen coming on scans at once (`BurstPolicy` in `Proximity.kt`).
+
+Seen on the S23 the same day (local build): bursts that keep "near" took 1 result in
+0.04–0.3 s, screen off included (it had been 26–28 results in 6 s); arming took 3; the
+screen-on scan fired the instant the screen lit with the gate far; the 8 h window fell
+from HIGH to MEDIUM within the hour. Not yet seen on the device: a far gate skipping its
+bursts in the dark — the phone was woken or unplugged every time. Check it with the phone
+left alone: Mac app quit until the gate is far, screen off ~2 min, then the app's last
+scans in `dumpsys bluetooth_manager`, read before waking it. (`batterystats --history`
+can't tell: its `ble_scan` flag is device-wide, and Play services scans almost nonstop.)
 
 ## 1. Long-poll on `GET /clipboard` — no usability impact
 
