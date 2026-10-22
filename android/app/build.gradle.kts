@@ -20,8 +20,8 @@ android {
         applicationId = "net.simioni.rd2mac"
         minSdk = 33          // Android 13: READ_MEDIA_IMAGES, POST_NOTIFICATIONS
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.7"   // kept equal to the Mac app's version
+        versionCode = 8
+        versionName = "0.8"   // kept equal to the Mac app's version
         // Self-update feed (01/10/2026) — the Mac reads the same release (Updates.swift).
         // A test build points at a local feed: -Prd2macUpdateFeed=http://<mac-ip>:8000/latest.json
         val updateFeed = project.findProperty("rd2macUpdateFeed")

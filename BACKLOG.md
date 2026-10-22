@@ -3,11 +3,17 @@
 Accepted but not scheduled. Nothing here is urgent: they are hygiene, not fixes for
 a user-visible problem.
 
-## ⏭️ 0.8 — not released yet
+## ⏭️ 0.8 — one beacon per pair; Device care stops flagging RD2Mac (published 23/10/2026)
 
 - Android: the proximity gate no longer piles up the screen-off scan results that made
   Samsung's Device care call RD2Mac a battery hog — see *2026-10-22 — Samsung's own
   detector* below.
+- Mac + Android: the beacon is the pair's own and changes daily (§5, PROTOCOL.md
+  *BLE proximity beacon*). Mixed 0.7/0.8 devices don't hear each other: the gate reads
+  far until both update.
+- **Update test, as users get it:** before publishing, the Mac and the S23 went back to
+  the official 0.7 (the Mac from a byte copy of its installed bundle, the phone from
+  the v0.7 APK by `adb install -r`). Results below as they come in.
 
 ## ⏭️ 0.7 — the first real self-update (published 08/10/2026)
 
@@ -107,17 +113,21 @@ too). Screen-off results: 2 in the 2 h after the update; the 8 h window fell fro
 to MEDIUM within the hour and to LOW in two. Device care kept showing the 09:36
 detection all afternoon — it doesn't re-judge the app when its behaviour changes.
 
-## 5. The beacon has no identity — any RD2Mac Mac nearby counts as "my Mac" — DECIDE
+## 5. ✅ FIXED 2026-10-22 (0.8) — the beacon had no identity: any RD2Mac Mac nearby counted as "my Mac"
 
-Every Mac running RD2Mac advertises the same service UUID and nothing else
-(`ProximityAdvertiser`), so the phone can't tell its paired Mac from another one. Seen
-2026-10-22: with the paired Mac's app quit, the S23 kept hearing the beacon at −74 dBm
-from 14:23 to at least 14:26 (gone by 14:32) — another RD2Mac Mac in range. Cost today: weak readings that never renew
-the gate keep a burst listening its full 6 s. Risk: near enough to SOMEONE ELSE's
-RD2Mac Mac, the gate reads "near" and keeps the paired Mac's clipboard flowing to the
-phone. Way out: a per-pairing beacon both sides derive from the pairing key (macOS
-advertises only service UUIDs and a local name) — a wire change for both apps, shipped
-together with the old UUID kept until old phones are gone.
+Up to 0.7 every Mac running RD2Mac advertised the same service UUID and nothing else,
+so the phone couldn't tell its paired Mac from another one. Seen 2026-10-22: with the
+paired Mac's app quit, the S23 kept hearing the beacon at −74 dBm from 14:23 to at
+least 14:26 (gone by 14:32) — a second Mac in the house running RD2Mac. Cost: weak readings
+that never renew the gate kept a burst listening its full 6 s. Risk: near enough to
+SOMEONE ELSE's RD2Mac Mac, the gate read "near" and kept the paired Mac's clipboard
+flowing to the phone.
+
+What shipped: the pair's own UUID, derived from the session key and the UTC day
+(PROTOCOL.md *BLE proximity beacon*; macOS advertises only service UUIDs and a local
+name). The old UUID was NOT kept alongside: two 128-bit UUIDs don't fit one legacy
+advertisement, and a mixed pair only loses the automatic clipboard (gate reads far)
+until the daily self-update brings the other side.
 
 ## 1. Long-poll on `GET /clipboard` — no usability impact
 
