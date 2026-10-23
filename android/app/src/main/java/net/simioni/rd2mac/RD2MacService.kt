@@ -137,6 +137,7 @@ class RD2MacService : Service() {
             if (pairing.receiveClipboard) startClipboardPolling()
             updateProximityMonitor()
             AppUpdater.start(this)
+            KeepAlive.arm(this)
         }
         when (intent?.action) {
             ACTION_SET_CLIPBOARD -> {

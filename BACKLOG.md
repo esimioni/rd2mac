@@ -3,6 +3,12 @@
 Accepted but not scheduled. Nothing here is urgent: they are hygiene, not fixes for
 a user-visible problem.
 
+## ⏭️ 0.9 — not released yet
+
+- Android: a phone that updated itself comes back on its own (`KeepAlive`, below).
+  ⚠️ Not for the 0.8 → 0.9 update itself: the fix must be in the version being
+  replaced. The 0.9 notes must tell phone users to open RD2Mac once after updating.
+
 ## ⏭️ 0.8 — one beacon per pair; Device care stops flagging RD2Mac (published 23/10/2026)
 
 - Android: the proximity gate no longer piles up the screen-off scan results that made
@@ -13,7 +19,25 @@ a user-visible problem.
   far until both update.
 - **Update test, as users get it:** before publishing, the Mac and the S23 went back to
   the official 0.7 (the Mac from a byte copy of its installed bundle, the phone from
-  the v0.7 APK by `adb install -r`). Results below as they come in.
+  the v0.7 APK by `adb install -r`).
+  - **Mac: ✅ 23/10 12:04** — check forced, new copy up 6 s after it, extensions on.
+  - **S23: updated, but the app did NOT come back** (23/10 14:59). The update needed
+    his tap (notification → confirm; so 0.8 was not silent either). The system killed
+    the old process and finished the install, then never started the new one:
+    MY_PACKAGE_REPLACED never reached `BootReceiver`, and the phone stayed off the
+    network ("searching" on the Mac) until the app was opened by hand. The same APK
+    installed through `pm` — even with RD2Mac as installer of record — came back in
+    1.5 s through that same broadcast. The difference left is the user-confirmed
+    session the app committed itself; why Android drops the broadcast there is not
+    known (Samsung's `KillAppBlocker` in the log only waits for the old process to die
+    — read in the decompiled `services.jar`).
+  - **Fix (0.9): `KeepAlive`** — a non-wakeup inexact alarm every 15 min, armed when
+    the service starts, aimed at `BootReceiver`; it restarts the service when its
+    process is gone and does nothing otherwise. Alarms outlive an update (the alarm
+    service returns early on PACKAGE_REMOVED with EXTRA_REPLACING; only a user's
+    force-stop drops them) — seen on the S23: the alarm the old build armed was still
+    there after a package update, and the alarm history shows two `[Add]` with no
+    `[Remove]` between them. Worst case after an update: ~26 min (interval + window).
 
 ## ⏭️ 0.7 — the first real self-update (published 08/10/2026)
 
