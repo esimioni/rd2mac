@@ -3,7 +3,7 @@
 Accepted but not scheduled. Nothing here is urgent: they are hygiene, not fixes for
 a user-visible problem.
 
-## ⏭️ 0.9 — not released yet
+## ⏭️ 0.9 — not released yet (on hold — "Não vamos publicar versão nova ainda", 23/10/2026)
 
 - Android: a phone that updated itself comes back on its own (`KeepAlive`, below).
   ⚠️ Not for the 0.8 → 0.9 update itself: the fix must be in the version being
@@ -22,7 +22,8 @@ a user-visible problem.
   the v0.7 APK by `adb install -r`).
   - **Mac: ✅ 23/10 12:04** — check forced, new copy up 6 s after it, extensions on.
   - **S23: updated, but the app did NOT come back** (23/10 14:59). The update needed
-    his tap (notification → confirm; so 0.8 was not silent either). The system killed
+    his tap (notification → confirm, and Play Protect asked to scan again; so 0.8 was
+    not silent either). The system killed
     the old process and finished the install, then never started the new one:
     MY_PACKAGE_REPLACED never reached `BootReceiver`, and the phone stayed off the
     network ("searching" on the Mac) until the app was opened by hand. The same APK
