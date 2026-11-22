@@ -8,6 +8,9 @@ a user-visible problem.
 - Android: a phone that updated itself comes back on its own (`KeepAlive`, below).
   ⚠️ Not for the 0.8 → 0.9 update itself: the fix must be in the version being
   replaced. The 0.9 notes must tell phone users to open RD2Mac once after updating.
+- Android: a Mac that mDNS resolves only by a v6 link-local no longer crashes the
+  service (2 crashes on the S23, 2026-11-20 — `PeerAddress.pick`, `91011db`); until
+  an IPv4 or a routable v6 resolves, the phone just waits for the Mac.
 
 ## ⏭️ 0.8 — one beacon per pair; Device care stops flagging RD2Mac (published 23/10/2026)
 
