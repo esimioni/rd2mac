@@ -8,6 +8,7 @@ import android.util.Log
 import net.simioni.rd2mac.Platform
 import net.simioni.rd2mac.RD2Mac
 import java.net.Inet4Address
+import java.net.InetAddress
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -18,6 +19,18 @@ data class ResolvedPeer(
     val port: Int,
     val platform: Platform,
 )
+
+/** Which resolved address becomes a [ResolvedPeer.host] — the one place a host is
+ *  chosen, so every client's URL (clipboard, proximity, transfers) can carry it.
+ *  IPv4 first (mirrors the Swift `preferredIP`), else a routable IPv6. Never a v6
+ *  link-local: it connects only with its scope id ("fe80::…%wlan0"), and OkHttp
+ *  refuses a scope id in a URL host — the service crashed on one (2026-11-20).
+ *  Nothing usable → null, and the peer waits for the next resolve. */
+internal object PeerAddress {
+    fun pick(addrs: List<InetAddress>): String? =
+        (addrs.firstOrNull { it is Inet4Address }
+            ?: addrs.firstOrNull { !it.isLinkLocalAddress })?.hostAddress
+}
 
 /**
  * When the continuous mDNS browse should run. Once the paired Mac is resolved
@@ -166,17 +179,17 @@ class Discovery(context: Context) {
 
     private fun snapshot(): List<ResolvedPeer> = synchronized(peers) { peers.values.toList() }
 
-    /** Prefer IPv4 (mirrors the Swift `preferredIP`): a v6 link-local without its
-     *  scope id ("fe80::…") is unconnectable once stringified. API 34+ exposes
+    /** The address the peer is reached at ([PeerAddress.pick]). API 34+ exposes
      *  all resolved addresses; before that there's only the single `host`. */
-    private fun preferredHost(info: NsdServiceInfo): String? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val addrs = info.hostAddresses
-            (addrs.firstOrNull { it is Inet4Address } ?: addrs.firstOrNull())?.hostAddress
+    private fun preferredHost(info: NsdServiceInfo): String? {
+        val addrs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            info.hostAddresses
         } else {
             @Suppress("DEPRECATION")
-            info.host?.hostAddress
+            listOfNotNull(info.host)
         }
+        return PeerAddress.pick(addrs)
+    }
 
     /** Stop browsing but KEEP the resolved peers: while dormant, transfers keep
      *  using the last-known address (a failure there invalidates it via [forget]). */
