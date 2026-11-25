@@ -8,7 +8,6 @@ a user-visible problem.
 Android-only changes; the Mac moves to 0.9 with no code change, to keep the tag equal to
 both apps' versions (the release contract, DEVELOPMENT.md *Self-update*).
 
-
 - Android: a phone that updated itself comes back on its own (`KeepAlive`, below).
   ⚠️ Not for the 0.8 → 0.9 update itself: the fix must be in the version being
   replaced. The 0.9 notes must tell phone users to open RD2Mac once after updating.
@@ -19,6 +18,13 @@ both apps' versions (the release contract, DEVELOPMENT.md *Self-update*).
   .doc and the rest. Until 0.8 it showed only for photos, videos, documents and text,
   and for several items only photos and videos (two Voice Recorder .m4a found no
   RD2Mac, 2026-11-25).
+- **Update test, as users get it:** both devices were on the official 0.8 when it was
+  published (the Mac: notarized Developer ID 0.8, checked; the S23: no adb — developer
+  mode stays off — so "still on its 0.8 self-update" is inferred, not checked).
+  - **Mac: ✅ 25/11 18:36** — check forced (quit + kickstart 18:35:23), new copy up
+    66 s later, one process, both extensions on, phone found.
+  - **S23:** pending — its daily check, then notification + confirm + Play Protect;
+    the app must be opened by hand once (the 0.8 updater, no `KeepAlive` yet).
 
 ## ⏭️ 0.8 — one beacon per pair; Device care stops flagging RD2Mac (published 23/10/2026)
 
