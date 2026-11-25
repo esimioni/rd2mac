@@ -3,7 +3,11 @@
 Accepted but not scheduled. Nothing here is urgent: they are hygiene, not fixes for
 a user-visible problem.
 
-## ⏭️ 0.9 — not released yet (on hold — "Não vamos publicar versão nova ainda", 23/10/2026)
+## ⏭️ 0.9 — any file from the Share menu; the phone comes back on its own (published 25/11/2026)
+
+Android-only changes; the Mac moves to 0.9 with no code change, to keep the tag equal to
+both apps' versions (the release contract, DEVELOPMENT.md *Self-update*).
+
 
 - Android: a phone that updated itself comes back on its own (`KeepAlive`, below).
   ⚠️ Not for the 0.8 → 0.9 update itself: the fix must be in the version being
