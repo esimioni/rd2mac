@@ -11,6 +11,10 @@ a user-visible problem.
 - Android: a Mac that mDNS resolves only by a v6 link-local no longer crashes the
   service (2 crashes on the S23, 2026-11-20 — `PeerAddress.pick`, `91011db`); until
   an IPv4 or a routable v6 resolves, the phone just waits for the Mac.
+- Android: the share sheet offers RD2Mac for ANY file, one or many — audio, zip,
+  .doc and the rest. Until 0.8 it showed only for photos, videos, documents and text,
+  and for several items only photos and videos (two Voice Recorder .m4a found no
+  RD2Mac, 2026-11-25).
 
 ## ⏭️ 0.8 — one beacon per pair; Device care stops flagging RD2Mac (published 23/10/2026)
 

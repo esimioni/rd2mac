@@ -49,7 +49,10 @@
         </activity>
 
         <!-- The single "RD2Mac" entry in the share sheet. Translucent: it just
-             sends to the Mac and toasts the result, no full-screen UI. -->
+             sends to the Mac and toasts the result, no full-screen UI.
+             ANY file, one or many (*/*): a type left out of a list fails silently —
+             the entry just isn't there (Voice Recorder .m4a, 25/11/2026). Locked by
+             ShareFilterTest. -->
         <activity
             android:name=".ShareReceiverActivity"
             android:exported="true"
@@ -59,16 +62,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
-                <data android:mimeType="video/*" />
-                <data android:mimeType="application/*" />
-                <data android:mimeType="text/*" />
+                <data android:mimeType="*/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
-                <data android:mimeType="video/*" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
 
