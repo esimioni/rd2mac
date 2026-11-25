@@ -19,12 +19,19 @@ both apps' versions (the release contract, DEVELOPMENT.md *Self-update*).
   and for several items only photos and videos (two Voice Recorder .m4a found no
   RD2Mac, 2026-11-25).
 - **Update test, as users get it:** both devices were on the official 0.8 when it was
-  published (the Mac: notarized Developer ID 0.8, checked; the S23: no adb — developer
-  mode stays off — so "still on its 0.8 self-update" is inferred, not checked).
+  published (the Mac: notarized Developer ID 0.8; the S23: checked once connected,
+  below).
   - **Mac: ✅ 25/11 18:36** — check forced (quit + kickstart 18:35:23), new copy up
     66 s later, one process, both extensions on, phone found.
-  - **S23:** pending — its daily check, then notification + confirm + Play Protect;
-    the app must be opened by hand once (the 0.8 updater, no `KeepAlive` yet).
+  - **S23: installed by hand, 25/11 18:46** (adb over USB, his call — to send two
+    recordings that day): the release APK itself (11120654 bytes). Before it, the
+    official 0.8 was there (base.apk = the v0.8 asset's 11118118 bytes) and the share
+    menu listed RD2Mac for `image/jpeg` but not `audio/mp4`; after it, for every type
+    tried, one item or several. The service came back on its own, as `pm`/adb
+    installs always did. The phone's OWN 0.8 → 0.9 update went unobserved.
+  - **E2E right after (18:47):** Voice Recorder → Share → RD2Mac with 3 recordings
+    (`SEND_MULTIPLE typ=audio/*`, 309 MB: 192, 116 and 8 min) — all in the Mac's
+    Downloads ~18 s later, each md5 equal to the phone's original.
 
 ## ⏭️ 0.8 — one beacon per pair; Device care stops flagging RD2Mac (published 23/10/2026)
 

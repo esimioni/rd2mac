@@ -24,7 +24,8 @@ class ShareFilterTest {
 
     @Test fun twoVoiceRecorderM4aReachRd2mac() {
         assertAccepted(ACTION_SEND_MULTIPLE, "audio/mp4")
-        assertAccepted(ACTION_SEND_MULTIPLE, "audio/*") // two recordings in different formats
+        // What Voice Recorder really sends for a batch, even of .m4a only (logged 25/11/2026)
+        assertAccepted(ACTION_SEND_MULTIPLE, "audio/*")
     }
 
     @Test fun anyFileReachesRd2macOneOrMany() {
