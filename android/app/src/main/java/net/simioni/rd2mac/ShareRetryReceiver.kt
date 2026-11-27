@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 
 /** The failed-share notice's two ways out: "Try again" sends the kept files, dismissing
  *  the notice discards them ([net.simioni.rd2mac.media.PendingShares]). */
@@ -12,6 +13,7 @@ class ShareRetryReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val batch = intent.getStringExtra(EXTRA_BATCH) ?: return
+        Log.i(ShareTransfers.TAG, "notice ${intent.action?.substringAfterLast('.')} batch=$batch")
         when (intent.action) {
             ACTION_RETRY -> {
                 // An action button doesn't close its notice — and closing it from code is

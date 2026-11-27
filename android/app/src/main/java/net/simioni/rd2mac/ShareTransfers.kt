@@ -51,7 +51,11 @@ object ShareTransfers {
         val app = context.applicationContext
         executor.execute {
             val store = pending(app)
-            val items = store.load(batchId) ?: return@execute
+            val items = store.load(batchId)
+            if (items == null) {
+                Log.i(TAG, "retry: batch $batchId is gone (sent or dismissed)")
+                return@execute
+            }
             runBatch(app, items.size, keptOnCrash = batchId) { notifier ->
                 notifier.progress(items.first().name, 0, 1)
                 val payloads = items.map { it.payload() }
