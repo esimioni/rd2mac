@@ -31,8 +31,8 @@ both apps' versions (the release contract).
     verdict, no reason given) where 0.7/0.8 only got "App scan recommended" — he chose
     "Install anyway". 0.10 declares no new permission; VirusTotal: 0/63 for the exact APK
     (uploaded 27/11 for the appeal, which Google's form requires). Appeal: Google's Play
-    Protect appeal form, filled 27/11 in his Chrome; sending it was his click (no reply is
-    promised). He kept 0.10 published: its users are friends who trust it. Watch whether
+    Protect appeal form, **sent 27/11 ~19:29** (his click; "Your email has been sent" — no
+    reply is promised, so the signal is the next update not being blocked). He kept 0.10 published: its users are friends who trust it. Watch whether
     the next release gets the same verdict.
 
 ## ⏭️ 0.9 — any file from the Share menu; the phone comes back on its own (published 25/11/2026)
