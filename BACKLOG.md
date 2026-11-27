@@ -3,6 +3,25 @@
 Accepted but not scheduled. Nothing here is urgent: they are hygiene, not fixes for
 a user-visible problem.
 
+## ⏭️ 0.10 — the phone finds the Mac again; "Try again" on a failed share (published 27/11/2026)
+
+Android-only changes; the Mac moves to 0.10 with no code change, to keep the tag equal to
+both apps' versions (the release contract).
+
+- Android: a Mac the phone lost is found again by a knock on its last address
+  (`PeerRecovery`) and by a fresh browse when someone is waiting; the proximity line says
+  "sync active" only with the Mac on the network (27/11 — half an hour stuck "searching").
+- Android: a failed share keeps its files behind a pop-up notice with "Try again"
+  (`PendingShares`) — One UI can delete a shared screenshot at once.
+- The first two-digit minor: both updaters compare dotted versions number by number
+  ("0.10" > "0.9" is a test on each side), so 0.9 sees 0.10 as newer.
+- **Update test, as users get it:**
+  - Mac: on the official 0.9 (self-updated 25/11) when 0.10 was published.
+  - S23: on a hand-installed build of the 0.10 code with versionCode 9. Its update path
+    (`update/`, `BootReceiver`, `KeepAlive`) is unchanged since v0.9 (empty `git diff`),
+    so its daily check runs the same 0.9 → 0.10 path users get. ⏭️ The first update in
+    which `KeepAlive` should bring the phone app back on its own — observe it.
+
 ## ⏭️ 0.9 — any file from the Share menu; the phone comes back on its own (published 25/11/2026)
 
 Android-only changes; the Mac moves to 0.9 with no code change, to keep the tag equal to

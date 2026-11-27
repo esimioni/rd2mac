@@ -15,9 +15,9 @@
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.9</string>
+    <string>0.10</string>
     <key>CFBundleVersion</key>
-    <string>9</string>
+    <string>10</string>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <!-- Follows the system language automatically (no in-app switch). -->
