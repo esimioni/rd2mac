@@ -42,6 +42,13 @@ internal object PeerAddress {
 object BrowsePolicy {
     fun shouldBrowse(paired: Boolean, pairedResolved: Boolean, uiVisible: Boolean): Boolean =
         !paired || !pairedResolved || uiVisible
+
+    /** Someone is waiting on the paired Mac (screen open, share, tile) and it's lost:
+     *  start the browse over instead of trusting the running one. A fresh browse asks
+     *  the network again — 27/11/2026 one resolved the Mac 30 ms after starting, where
+     *  a browse running for 38+ min had reported none of its re-announcements. */
+    fun shouldRestart(paired: Boolean, pairedResolved: Boolean): Boolean =
+        paired && !pairedResolved
 }
 
 /**
@@ -195,7 +202,7 @@ class Discovery(context: Context) {
      *  using the last-known address (a failure there invalidates it via [forget]). */
     fun stopBrowse() {
         if (!browsing) return
-        Log.i(TAG, "browse stopped (dormant — using last-known addresses)")
+        Log.i(TAG, "browse stopped")   // dormant or restarting: the caller's "browse eval" line says which
         discoveryListener?.let { try { nsd.stopServiceDiscovery(it) } catch (_: Exception) {} }
         discoveryListener = null
         resolveQueue.clear()
@@ -206,6 +213,14 @@ class Discovery(context: Context) {
      *  an unresolved paired peer wakes the browse to find it again. */
     fun forget(name: String): List<ResolvedPeer> {
         synchronized(peers) { peers.remove(name) }
+        return snapshot()
+    }
+
+    /** A peer found WITHOUT mDNS — answering a knock on its last address
+     *  ([PeerRecovery]) — joins the live set like a resolved one; returns the
+     *  updated snapshot. */
+    fun adopt(peer: ResolvedPeer): List<ResolvedPeer> {
+        synchronized(peers) { peers[peer.name] = peer }
         return snapshot()
     }
 

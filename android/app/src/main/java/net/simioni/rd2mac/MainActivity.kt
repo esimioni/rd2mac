@@ -23,6 +23,7 @@ import net.simioni.rd2mac.media.MediaLocationPolicy
 import net.simioni.rd2mac.net.PairClient
 import net.simioni.rd2mac.net.PairingStore
 import net.simioni.rd2mac.net.ProximityLevels
+import net.simioni.rd2mac.net.ProximityLine
 import net.simioni.rd2mac.net.RD2Crypto
 import net.simioni.rd2mac.net.ResolvedPeer
 
@@ -220,12 +221,19 @@ class MainActivity : AppCompatActivity() {
             if (proximityLevels.checkedRadioButtonId == View.NO_ID) {
                 proximityLevels.check(checkedIdFor(pairing.proximityRssi))
             }
-            if (RD2MacState.proximityNear) {
-                proximityStatus.text = getString(R.string.prox_near)
-                proximityStatus.setTextColor(connectedGreen)
-            } else {
-                proximityStatus.text = getString(R.string.prox_far)
-                proximityStatus.setTextColor(mutedColor())
+            when (ProximityLine.of(RD2MacState.proximityNear, macOnNetwork = RD2MacState.peer != null)) {
+                ProximityLine.SYNC_ACTIVE -> {
+                    proximityStatus.text = getString(R.string.prox_near)
+                    proximityStatus.setTextColor(connectedGreen)
+                }
+                ProximityLine.NOT_ON_NETWORK -> {
+                    proximityStatus.text = getString(R.string.prox_near_no_mac)
+                    proximityStatus.setTextColor(mutedColor())
+                }
+                ProximityLine.AWAY -> {
+                    proximityStatus.text = getString(R.string.prox_far)
+                    proximityStatus.setTextColor(mutedColor())
+                }
             }
         }
 

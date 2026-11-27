@@ -36,6 +36,13 @@ macOS side (`mac/`) and the Android side (`android/`) implement exactly this.
   the Mac drops a peer only when it stops answering BOTH: unconfirmed by the browse
   for 150 s, it gets a `GET /ping` at its last address, and stays while the reply
   carries its own `id`.
+- **The phone has the mirror rule.** A Wi-Fi can drop the Mac's multicast to the
+  phone for good: measured 27/11/2026, the phone's browse heard none of six Mac
+  re-announcements in 30 min while unicast to the Mac worked. So while the paired
+  Mac is lost, the phone sends `GET /ping` to its last address (persisted, updated
+  on every resolve) every 15 s on Wi-Fi, and adopts it when the reply carries the
+  paired `id`. When someone is waiting (app open, share, clipboard tile) it also
+  starts the browse over: a fresh browse found the Mac in 30 ms.
 
 ## Headers
 
@@ -56,8 +63,10 @@ Health + identity. Response `200 application/json`:
 ```
 `id` is the stable per-install UUID (also in the TXT record). A peer from before
 `id` existed simply omits it; the field decodes tolerantly to `""`.
-It is also the Mac's liveness probe for a phone the browse stopped hearing (see
-Discovery), so it must stay open, cheap, and carry the same `id` as the TXT record.
+It is also each side's way back to a peer mDNS can't find (see Discovery): the Mac's
+liveness probe for a phone the browse stopped hearing, and the phone's knock on the
+paired Mac's last address. So it must stay open, cheap, and carry the same `id` as
+the TXT record.
 
 ### `POST /pair`
 ECDH key exchange. Request body JSON `{ "id", "name", "pubKey" }` — the initiator's

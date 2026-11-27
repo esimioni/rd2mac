@@ -18,6 +18,7 @@
     <string name="prox_room">Mesma sala</string>
     <string name="prox_house">Mesma casa</string>
     <string name="prox_near">Mac por perto ✓ — sync ativo</string>
+    <string name="prox_near_no_mac">Mac por perto, mas não encontrado na rede — sync pausado</string>
     <string name="prox_far">Mac longe — sync da área de transferência pausado</string>
     <string name="prox_perm_denied">Sem permissão de Bluetooth, o filtro de proximidade não funciona</string>
     <string name="tile_send_to_mac">Enviar p/ Mac</string>

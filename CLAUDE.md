@@ -74,6 +74,11 @@ adb install -r android/app/build/outputs/apk/release/app-release.apk   # our own
 - mDNS finds the phone; it does not prove it is gone. A dozing S23 left five Mac re-arms
   unanswered (~5 min) while answering ping — the menu said "searching" as the phone said
   "connected" (06/10). The Mac now drops a peer only if a unicast `GET /ping` fails too.
+- The mirror on the phone (27/11): after one failed request dropped the Mac, a browse
+  running 38+ min heard none of six re-announcements while unicast worked — shares failed,
+  the Mac's clipboard never came, and the proximity line still said "sync active". Now the
+  phone knocks `GET /ping` on the Mac's last address (`PeerRecovery`) and restarts the
+  browse when someone waits; "sync active" needs the Mac on the network, not just its beacon.
 - The phone comes back on its own after "clear all", after an update
   (`MY_PACKAGE_REPLACED`) and after boot — but only while it is exempt from battery
   optimisation (a restricted app can't start an FGS from the background). ⚠️ Testing the

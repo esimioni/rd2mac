@@ -13,9 +13,11 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import net.simioni.rd2mac.http.HttpServer
@@ -39,7 +41,9 @@ import net.simioni.rd2mac.net.Discovery
 import net.simioni.rd2mac.net.PairedPeer
 import net.simioni.rd2mac.net.PairingAuth
 import net.simioni.rd2mac.net.PairingStore
+import net.simioni.rd2mac.net.PeerRecovery
 import net.simioni.rd2mac.net.PeerSelection
+import net.simioni.rd2mac.net.PingClient
 import net.simioni.rd2mac.net.RD2Crypto
 import net.simioni.rd2mac.net.ResolvedPeer
 import net.simioni.rd2mac.net.WireBody
@@ -71,8 +75,9 @@ object RD2MacState {
      *  directly by the Activity (same process) — a startService intent from
      *  onPause can be dropped once the app is leaving the foreground. */
     @Volatile var uiVisible = false
-    /** Service hook: re-evaluate the browse policy after a state change. */
-    @Volatile var evalBrowse: (() -> Unit)? = null
+    /** Service hook: re-evaluate discovery now — the browse policy and, while the
+     *  paired Mac is lost, a knock on its last address (someone is waiting). */
+    @Volatile var evalDiscovery: (() -> Unit)? = null
     /** A pairing the Mac initiated with us, awaiting the user to compare the code. */
     @Volatile var pendingPairing: PendingPairing? = null
     /** Shared by the service (auto push/paste) and the tile path, so a manual
@@ -80,6 +85,20 @@ object RD2MacState {
     val clipGuard = ClipboardLoopGuard()
     var onChange: (() -> Unit)? = null
     fun notifyChange() = Handler(Looper.getMainLooper()).post { onChange?.invoke() }
+
+    /** The peer for a send someone is waiting on: the one we have, or the paired Mac
+     *  found again within [timeoutMs] (the phone may have just woken, or lost it).
+     *  Blocks — never on the main thread. */
+    fun awaitPeer(timeoutMs: Long): ResolvedPeer? {
+        peer?.let { return it }
+        evalDiscovery?.invoke()
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            peer?.let { return it }
+            Thread.sleep(150)
+        }
+        return peer
+    }
 }
 
 /** A pairing the peer initiated, held until the user compares the SAS code. */
@@ -112,6 +131,8 @@ class RD2MacService : Service() {
     private var proxRssi = 0
     /** When to tell the Mac about gate state (change + keepalive). */
     private val proxReporter = ProximityReporter()
+    /** When to knock on the lost Mac's last address. Main thread only. */
+    private val peerRecovery = PeerRecovery()
 
     override fun onCreate() {
         super.onCreate()
@@ -130,6 +151,7 @@ class RD2MacService : Service() {
             RD2MacState.running = true
             RD2MacState.boundPort = server.boundPort      // real port (fallback when busy)
             RD2MacState.pairedPeer = pairing.pairedPeer   // restore the chosen Mac
+            clipHandler.post(recoveryTick)   // first knock at once: no waiting on mDNS after a restart
             RD2MacState.receiveClipboard = pairing.receiveClipboard
             RD2MacState.keepPhotoLocation = effectiveKeepPhotoLocation()
             RD2MacState.proximityEnabled = pairing.proximityEnabled
@@ -260,10 +282,11 @@ class RD2MacService : Service() {
 
     override fun onDestroy() {
         stopClipboardPolling()
+        clipHandler.removeCallbacks(recoveryTick)
         proximity?.stop()
         proximity = null
         clipExecutor.shutdownNow()
-        RD2MacState.evalBrowse = null
+        RD2MacState.evalDiscovery = null
         try {
             (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
                 .unregisterNetworkCallback(networkCallback)
@@ -458,7 +481,7 @@ class RD2MacService : Service() {
             "v" to "${RD2Mac.PROTOCOL_VERSION}",
         )
         discovery.advertise(deviceDisplayName(this), server.boundPort, txt)
-        RD2MacState.evalBrowse = { clipHandler.post { updateBrowse() } }
+        RD2MacState.evalDiscovery = { clipHandler.post { refreshDiscovery() } }
         updateBrowse()
         (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
             .registerDefaultNetworkCallback(networkCallback)
@@ -473,16 +496,71 @@ class RD2MacService : Service() {
             "browse eval: paired=$paired resolved=$resolved ui=${RD2MacState.uiVisible} → ${if (wanted) "on" else "dormant"}")
         if (wanted) {
             discovery.browse(excludePlatform = Platform.ANDROID) { peers ->
-                RD2MacState.livePeers = peers
-                RD2MacState.notifyChange()
-                val active = RD2MacState.peer
-                updateNotification(if (active != null) getString(R.string.notif_mac, active.name)
-                                   else getString(R.string.notif_searching))
-                clipHandler.post { updateBrowse() }   // resolved → maybe go dormant
+                clipHandler.post { publishPeers(peers) }   // resolve callbacks run on binder threads
             }
         } else {
             discovery.stopBrowse()
         }
+    }
+
+    /** Someone is waiting on the Mac (screen open, share, tile): if it's lost, both
+     *  ways back at once — a fresh browse and a knock on its last address. Main thread. */
+    private fun refreshDiscovery() {
+        if (BrowsePolicy.shouldRestart(paired = RD2MacState.pairedPeer != null,
+                                       pairedResolved = RD2MacState.peer != null)) {
+            discovery.stopBrowse()
+        }
+        updateBrowse()
+        recoverPeer(forced = true)
+    }
+
+    /** The live set changed — found by the browse or by [recoverPeer]. Main thread. */
+    private fun publishPeers(peers: List<ResolvedPeer>) {
+        RD2MacState.livePeers = peers
+        val active = RD2MacState.peer
+        // Keep the address the lost Mac is knocked on current (DHCP may move it).
+        active?.let { RD2MacState.pairedPeer?.movedTo(it) }?.let { moved ->
+            pairing.pairedPeer = moved
+            RD2MacState.pairedPeer = moved
+        }
+        RD2MacState.notifyChange()
+        updateNotification(if (active != null) getString(R.string.notif_mac, active.name)
+                           else getString(R.string.notif_searching))
+        updateBrowse()   // resolved → maybe go dormant
+    }
+
+    /** Knock on the lost Mac's last address when [PeerRecovery] says it's due, and
+     *  adopt it if it answers as itself. The other way back besides mDNS — which a
+     *  Wi-Fi that drops the Mac's multicast never delivers. Main thread. */
+    private fun recoverPeer(forced: Boolean) {
+        if (clipExecutor.isShutdown) return   // a refresh posted just before onDestroy
+        val candidate = peerRecovery.due(RD2MacState.pairedPeer, resolved = RD2MacState.peer != null,
+            onWifi = onWifi(), now = SystemClock.elapsedRealtime(), forced = forced) ?: return
+        clipExecutor.execute {
+            val found = PeerRecovery.confirm(candidate, PingClient.identity(candidate))
+            Log.i(DISCOVERY_TAG, "knock ${candidate.host}:${candidate.port} → ${if (found != null) "answered" else "no answer"}")
+            if (found != null) clipHandler.post {
+                // The browse may have found it meanwhile, the user forgotten this Mac,
+                // or the service ended.
+                if (!clipExecutor.isShutdown && RD2MacState.peer == null &&
+                    RD2MacState.pairedPeer?.id == found.id) {
+                    publishPeers(discovery.adopt(found))
+                }
+            }
+        }
+    }
+
+    private val recoveryTick = object : Runnable {
+        override fun run() {
+            recoverPeer(forced = false)
+            clipHandler.postDelayed(this, PeerRecovery.TICK_MS)
+        }
+    }
+
+    private fun onWifi(): Boolean {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        return cm.getNetworkCapabilities(cm.activeNetwork)
+            ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
     }
 
     /** A request to the paired Mac failed at the connectivity level: its cached
@@ -599,7 +677,7 @@ class RD2MacService : Service() {
          *  foreground) can be silently dropped by the platform. */
         fun notifyUiVisible(visible: Boolean) {
             RD2MacState.uiVisible = visible
-            RD2MacState.evalBrowse?.invoke()
+            RD2MacState.evalDiscovery?.invoke()
         }
 
         private fun startService(context: Context, intent: Intent) {

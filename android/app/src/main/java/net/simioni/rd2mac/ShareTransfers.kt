@@ -13,7 +13,6 @@ import net.simioni.rd2mac.media.MediaReader
 import net.simioni.rd2mac.media.SharedSource
 import net.simioni.rd2mac.net.OkHttpPoster
 import net.simioni.rd2mac.net.RD2Crypto
-import net.simioni.rd2mac.net.ResolvedPeer
 import net.simioni.rd2mac.net.TransferOrchestrator
 import net.simioni.rd2mac.update.TransferActivity
 import java.io.File
@@ -73,7 +72,7 @@ object ShareTransfers {
     private fun send(context: Context, sources: List<SharedSource>, spoolDir: File,
                      notifier: TransferNotifier): Result {
         notifier.progress(sources.first().name, 0, 1)
-        val peer = awaitPeer(PEER_TIMEOUT_MS)
+        val peer = RD2MacState.awaitPeer(PEER_TIMEOUT_MS)
         Log.i(TAG, "send: files=${sources.size} peer=$peer")
         if (peer == null) return Result.Failed(context.getString(
             if (RD2MacState.pairedPeer == null) R.string.share_open_choose else R.string.share_no_mac))
@@ -91,16 +90,6 @@ object ShareTransfers {
         val failed = outcome.failed + (sources.size - payloads.size)   // unreadable ones count
         return if (failed == 0) Result.Sent(context.getString(R.string.share_sent, outcome.sent))
         else Result.Failed(context.getString(R.string.share_failed, failed, sources.size))
-    }
-
-    /** Wait briefly for discovery to resolve the Mac (the phone may have just woken). */
-    private fun awaitPeer(timeoutMs: Long): ResolvedPeer? {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            RD2MacState.peer?.let { return it }
-            Thread.sleep(150)
-        }
-        return RD2MacState.peer
     }
 
     private sealed class Result(val message: String) {

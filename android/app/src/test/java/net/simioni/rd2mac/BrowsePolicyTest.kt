@@ -26,4 +26,16 @@ class BrowsePolicyTest {
     @Test fun pairedResolvedAndUiClosedGoesDormant() {
         assertFalse(BrowsePolicy.shouldBrowse(paired = true, pairedResolved = true, uiVisible = false))
     }
+
+    /** 27/11/2026: a browse running for 38+ min never reported the paired Mac through
+     *  six of its re-announcements; a fresh one resolved it 30 ms after starting. */
+    @Test fun lostPairedMacGetsAFreshBrowseWhenSomeoneIsWaiting() {
+        assertTrue(BrowsePolicy.shouldRestart(paired = true, pairedResolved = false))
+    }
+
+    @Test fun resolvedOrUnpairedKeepsTheRunningBrowse() {
+        assertFalse(BrowsePolicy.shouldRestart(paired = true, pairedResolved = true))
+        // Unpaired, the browse feeds the pick list: restarting would only blank it.
+        assertFalse(BrowsePolicy.shouldRestart(paired = false, pairedResolved = false))
+    }
 }

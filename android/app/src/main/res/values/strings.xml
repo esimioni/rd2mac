@@ -18,6 +18,7 @@
     <string name="prox_room">Same room</string>
     <string name="prox_house">Same house</string>
     <string name="prox_near">Mac nearby ✓ — sync active</string>
+    <string name="prox_near_no_mac">Mac nearby, but not found on the network — sync paused</string>
     <string name="prox_far">Mac away — clipboard sync paused</string>
     <string name="prox_perm_denied">Without Bluetooth permission the proximity filter can\'t work</string>
     <string name="tile_send_to_mac">Send to Mac</string>

@@ -2,6 +2,7 @@ package net.simioni.rd2mac.net
 
 import android.content.Context
 import android.content.SharedPreferences
+import net.simioni.rd2mac.Platform
 import java.util.UUID
 
 /**
@@ -18,7 +19,21 @@ data class PairedPeer(
     val token: String,
     /** AES-256 key (base64) derived from the same secret; encrypts content. */
     val key: String = "",
-)
+) {
+    /** Where this Mac was last seen — what [PeerRecovery] knocks on when mDNS can't
+     *  find it. Null when no address was ever known (paired from the Mac's side
+     *  before discovery resolved it). */
+    fun lastKnown(): ResolvedPeer? =
+        if (host.isBlank() || port <= 0) null
+        else ResolvedPeer(id, name, host, port, Platform.MACOS)
+
+    /** This pairing at the address [live] was just seen at — null when that is the
+     *  stored address already, or another peer. Keeps [lastKnown] current when the
+     *  Mac's DHCP address changes. */
+    fun movedTo(live: ResolvedPeer): PairedPeer? =
+        if (live.id != id || (live.host == host && live.port == port)) null
+        else copy(host = live.host, port = live.port)
+}
 
 /**
  * Pure authorization rules for the handshake — mirror of the Swift `PairingAuth`.

@@ -208,7 +208,9 @@ long-poll ships first, but it is independent and smaller.
 `onPeerUnreachable` drops the cached address and restarts the mDNS browse, which then runs
 continuously with no backoff until the Mac answers — i.e. forever while the Mac is asleep
 or the phone is away. A staged backoff (e.g. browse 30 s, sleep 1 → 5 min) would stop that,
-and skipping the browse entirely off Wi-Fi would help too.
+and skipping the browse entirely off Wi-Fi would help too. Since 27/11/2026 the lost state
+also knocks `GET /ping` on the Mac's last address every 15 s (Wi-Fi only, `PeerRecovery`) —
+the same away-from-the-Mac cost, and the same latency trade-off if it ever backs off.
 
 Trade-off: it costs reconnection latency when arriving home (the phone would take up to
 one backoff interval to see the Mac again). **Not a free change — needs a decision on how

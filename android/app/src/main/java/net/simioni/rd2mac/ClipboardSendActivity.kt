@@ -35,16 +35,18 @@ class ClipboardSendActivity : Activity() {
 
     private fun sendClipboard() {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val peer = RD2MacState.peer ?: return finishWith(getString(R.string.clip_no_mac))
+        // Read while focused — the only moment Android lets us; the Mac can be found after.
         val payload = ClipPayloads.fromClip(this, cm.primaryClip)
             ?: return finishWith(getString(R.string.clip_empty))
 
         // Remember the manual send too, so the poll doesn't re-paste its echo.
         RD2MacState.clipGuard.shouldPush(payload.second)
 
-        val token = RD2MacState.pairedPeer?.token
-        val key = RD2Crypto.keyBytes(RD2MacState.pairedPeer?.key)
         Thread {
+            val peer = RD2MacState.awaitPeer(PEER_WAIT_MS)
+                ?: return@Thread runOnUiThread { finishWith(getString(R.string.clip_no_mac)) }
+            val token = RD2MacState.pairedPeer?.token
+            val key = RD2Crypto.keyBytes(RD2MacState.pairedPeer?.key)
             val ok = ClipboardClient.push(peer, token, key, payload.first, payload.second)
             runOnUiThread { finishWith(getString(if (ok) R.string.clip_sent else R.string.clip_fail)) }
         }.start()
@@ -53,5 +55,11 @@ class ClipboardSendActivity : Activity() {
     private fun finishWith(msg: String) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         finish()
+    }
+
+    private companion object {
+        /** Long enough for a knock on the Mac's last address; short, because this
+         *  invisible screen holds the phone while it waits. */
+        const val PEER_WAIT_MS = 3_000L
     }
 }

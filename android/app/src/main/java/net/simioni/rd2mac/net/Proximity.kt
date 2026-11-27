@@ -321,6 +321,21 @@ class ProximityMonitor(
  * Reports the gate status to the Mac (`POST /proximity`, token + sealed body
  * like every transfer). Best-effort: a failure is retried by the next keepalive.
  */
+/** The line under the proximity switch. "Sync active" takes BOTH halves: the beacon
+ *  says the Mac is near AND the network has it — the beacon alone once showed "sync
+ *  active" for half an hour in which nothing synced (27/11/2026). */
+enum class ProximityLine {
+    SYNC_ACTIVE, NOT_ON_NETWORK, AWAY;
+
+    companion object {
+        fun of(near: Boolean, macOnNetwork: Boolean): ProximityLine = when {
+            !near -> AWAY
+            macOnNetwork -> SYNC_ACTIVE
+            else -> NOT_ON_NETWORK
+        }
+    }
+}
+
 object ProximityClient {
 
     fun report(peer: ResolvedPeer, token: String?, keyBytes: ByteArray?,
