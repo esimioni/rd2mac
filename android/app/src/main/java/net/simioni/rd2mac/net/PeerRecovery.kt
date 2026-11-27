@@ -80,8 +80,7 @@ object PingClient {
     /** Null when nobody answers. Never fires `onPeerUnreachable`: while the Mac is
      *  lost, a knock that goes unanswered is the expected outcome. */
     fun identity(peer: ResolvedPeer): PeerIdentity? {
-        val url = "http://${ClipboardClient.bracketed(peer)}:${peer.port}${RD2Mac.Path.PING}"
-        return RD2Http.execute(Request.Builder().url(url).get().build()) { resp ->
+        return RD2Http.execute(Request.Builder().url(peer.url(RD2Mac.Path.PING)).get().build()) { resp ->
             if (resp.code == 200) PeerIdentity.parse(resp.body?.string()) else null
         }
     }

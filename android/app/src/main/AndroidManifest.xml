@@ -104,6 +104,11 @@
             android:name=".update.UpdateInstallReceiver"
             android:exported="false" />
 
+        <!-- The failed-share notice: "Try again" resends the kept files, dismissing discards them. -->
+        <receiver
+            android:name=".ShareRetryReceiver"
+            android:exported="false" />
+
         <!-- Transparent helper: reads the phone clipboard (needs focus) and sends it to the Mac. -->
         <activity
             android:name=".ClipboardSendActivity"

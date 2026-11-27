@@ -70,7 +70,7 @@ object ClipboardClient {
      *  204/failure; a connectivity failure additionally fires [onError]. */
     fun pull(peer: ResolvedPeer, token: String?, keyBytes: ByteArray?, since: Int,
              onError: () -> Unit = {}): ClipboardData? {
-        val url = "http://${bracketed(peer)}:${peer.port}${RD2Mac.Path.CLIPBOARD}?since=$since"
+        val url = peer.url("${RD2Mac.Path.CLIPBOARD}?since=$since")
         val builder = Request.Builder().url(url).get()
         if (!token.isNullOrEmpty()) builder.header(RD2Mac.Header.TOKEN, token)
         return RD2Http.execute(builder.build(), onError) { resp ->
@@ -92,15 +92,11 @@ object ClipboardClient {
      *  a connectivity failure additionally fires [onError]. */
     fun push(peer: ResolvedPeer, token: String?, keyBytes: ByteArray?,
              contentType: String, bytes: ByteArray, onError: () -> Unit = {}): Boolean {
-        val url = "http://${bracketed(peer)}:${peer.port}${RD2Mac.Path.CLIPBOARD}"
+        val url = peer.url(RD2Mac.Path.CLIPBOARD)
         val payload = keyBytes?.let { RD2Crypto.seal(bytes, it) } ?: bytes
         val body = payload.toRequestBody(contentType.toMediaTypeOrNull())
         val builder = Request.Builder().url(url).post(body).header("Content-Type", contentType)
         if (!token.isNullOrEmpty()) builder.header(RD2Mac.Header.TOKEN, token)
         return RD2Http.execute(builder.build(), onError) { it.code == 200 } ?: false
     }
-
-    /** IPv6 literals need brackets in a URL. */
-    internal fun bracketed(peer: ResolvedPeer): String =
-        if (peer.host.contains(":")) "[${peer.host}]" else peer.host
 }

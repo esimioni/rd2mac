@@ -340,7 +340,7 @@ object ProximityClient {
 
     fun report(peer: ResolvedPeer, token: String?, keyBytes: ByteArray?,
                enabled: Boolean, near: Boolean, onError: () -> Unit = {}): Boolean {
-        val url = "http://${ClipboardClient.bracketed(peer)}:${peer.port}${RD2Mac.Path.PROXIMITY}"
+        val url = peer.url(RD2Mac.Path.PROXIMITY)
         val json = """{"enabled":$enabled,"near":$near}""".toByteArray(Charsets.UTF_8)
         val payload = keyBytes?.let { RD2Crypto.seal(json, it) } ?: json
         val builder = Request.Builder().url(url)

@@ -79,6 +79,10 @@ adb install -r android/app/build/outputs/apk/release/app-release.apk   # our own
   the Mac's clipboard never came, and the proximity line still said "sync active". Now the
   phone knocks `GET /ping` on the Mac's last address (`PeerRecovery`) and restarts the
   browse when someone waits; "sync active" needs the Mac on the network, not just its beacon.
+- One UI's "Delete shared screenshots" deletes a screenshot the moment it is shared, and the
+  share sends later, in the background: a failed send lost it (27/11). A failed share now
+  keeps its files (`PendingShares`) behind a pop-up notice with "Try again"; dismissing the
+  notice discards them, and a 7-day sweep catches the rest.
 - The phone comes back on its own after "clear all", after an update
   (`MY_PACKAGE_REPLACED`) and after boot — but only while it is exempt from battery
   optimisation (a restricted app can't start an FGS from the background). ⚠️ Testing the

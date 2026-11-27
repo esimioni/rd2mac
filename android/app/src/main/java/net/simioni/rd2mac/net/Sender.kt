@@ -50,7 +50,13 @@ class FilePayload(
     val mime: String,
     val length: Long,
     val open: () -> InputStream,
-)
+) {
+    companion object {
+        /** A payload over a file of ours (spooled, or kept for a retry), sent as [filename]. */
+        fun of(file: java.io.File, filename: String, mime: String) =
+            FilePayload(filename, mime, file.length()) { file.inputStream() }
+    }
+}
 
 /**
  * Retry policy that guarantees NO silent success: reports success only when an
@@ -87,7 +93,8 @@ class TransferOrchestrator(
     /** One delivery attempt; reports the file's bytes sent so far to its callback. */
     private val post: (ResolvedPeer, FilePayload, (Long) -> Unit) -> Boolean,
 ) {
-    data class Outcome(val sent: Int, val failed: Int) {
+    data class Outcome(val sent: Int, val failedIndexes: List<Int>) {
+        val failed: Int get() = failedIndexes.size
         val allSent: Boolean get() = failed == 0 && sent > 0
     }
 
@@ -98,10 +105,10 @@ class TransferOrchestrator(
         val total = payloads.sumOf { it.length }
         var before = 0L
         var sent = 0
-        var failed = 0
+        val failed = mutableListOf<Int>()
         payloads.forEachIndexed { index, payload ->
             val ok = retry.send { post(peer, payload) { bytes -> progress(index, before + bytes, total) } }
-            if (ok) sent++ else failed++
+            if (ok) sent++ else failed += index
             before += payload.length
             progress(index, before, total)
         }
@@ -118,10 +125,8 @@ class OkHttpPoster(
     private val client: OkHttpClient = RD2Http.client,
 ) {
     fun post(peer: ResolvedPeer, payload: FilePayload, onBytes: (Long) -> Unit = {}): Boolean {
-        val host = if (peer.host.contains(":")) "[${peer.host}]" else peer.host
-        val url = "http://$host:${peer.port}${RD2Mac.Path.RECEIVE}"
         val builder = Request.Builder()
-            .url(url)
+            .url(peer.url(RD2Mac.Path.RECEIVE))
             .post(WireRequestBody(payload, WireBody(keyBytes), onBytes))
             // Filename sealed with the pairing key (S1): the peer name is public
             // Bonjour data, but filenames are content metadata.
@@ -160,8 +165,7 @@ private class WireRequestBody(
 /** POST /pair handshake: send our ECDH public key, get the peer's back (null on 403/fail). */
 object PairClient {
     fun pair(peer: ResolvedPeer, myId: String, myName: String, myPubKey: String): String? {
-        val host = if (peer.host.contains(":")) "[${peer.host}]" else peer.host
-        val url = "http://$host:${peer.port}${RD2Mac.Path.PAIR}"
+        val url = peer.url(RD2Mac.Path.PAIR)
         val json = org.json.JSONObject()
             .put("id", myId).put("name", myName).put("pubKey", myPubKey).toString()
         val body = json.toRequestBody("application/json".toMediaTypeOrNull())

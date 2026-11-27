@@ -57,7 +57,7 @@ object MediaReader {
             return FilePayload(source.name, source.mime, length) { reread(afd) }
         }
         val spooled = spool(afd, spoolDir) ?: return null
-        return FilePayload(source.name, source.mime, spooled.length()) { spooled.inputStream() }
+        return FilePayload.of(spooled, source.name, source.mime)
     }
 
     /** A fresh stream over the same open file, from its start — the grant may be gone. */

@@ -30,6 +30,14 @@ class TransferOrchestratorTest {
         assertFalse(outcome.allSent)
     }
 
+    /** "Try again" keeps only what did not arrive — a retry must not send the rest twice. */
+    @Test fun failedFilesAreNamedByPosition() {
+        val orch = TransferOrchestrator(noDelay) { _, p, _ -> p.filename == "b" }
+        val outcome = orch.sendAll(peer, listOf(payload("a"), payload("b"), payload("c")))
+        assertEquals(listOf(0, 2), outcome.failedIndexes)
+        assertEquals(2, outcome.failed)
+    }
+
     /** The share runs after its screen is gone, so its progress is all the user sees:
      *  one bar for the whole batch, ending exactly at the total. */
     @Test fun progressCoversTheWholeBatch() {

@@ -1,6 +1,5 @@
 package net.simioni.rd2mac
 
-import net.simioni.rd2mac.net.ClipboardClient
 import net.simioni.rd2mac.net.PeerAddress
 import net.simioni.rd2mac.net.ResolvedPeer
 import okhttp3.Request
@@ -22,10 +21,8 @@ class PeerAddressTest {
         Inet6Address.getByAddress(null, InetAddress.getByName("fe80::1").address, 2)
     private val global = InetAddress.getByName("2001:db8::7")
 
-    /** The URL a client builds for [host] (ClipboardClient, Proximity, Sender). */
-    private fun urlOf(host: String) = Request.Builder()
-        .url("http://${ClipboardClient.bracketed(peerAt(host))}:53318/ping")
-        .build().url
+    /** The URL every client builds for [host] (clipboard, proximity, ping, transfers). */
+    private fun urlOf(host: String) = Request.Builder().url(peerAt(host).url("/ping")).build().url
 
     private fun peerAt(host: String) = ResolvedPeer("1", "Mac", host, 53318, Platform.MACOS)
 

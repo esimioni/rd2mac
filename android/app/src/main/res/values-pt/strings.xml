@@ -48,6 +48,9 @@
     <string name="transfer_sending">Enviando para o Mac</string>
     <string name="channel_transfers">Transferências</string>
     <string name="channel_updates">Atualizações</string>
+    <string name="channel_failed">Envios que falharam</string>
+    <string name="share_kept">Guardado no telefone até você tentar de novo</string>
+    <string name="share_retry">Tentar de novo</string>
     <string name="update_ready_title">Atualização do RD2Mac pronta</string>
     <string name="update_ready_text">Toque para instalar a versão %1$s</string>
 

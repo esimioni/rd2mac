@@ -18,7 +18,12 @@ data class ResolvedPeer(
     val host: String,
     val port: Int,
     val platform: Platform,
-)
+) {
+    /** The URL of [path] on this peer — the one place it is built: an IPv6 literal
+     *  needs brackets in a URL host. */
+    fun url(path: String): String =
+        "http://${if (host.contains(":")) "[$host]" else host}:$port$path"
+}
 
 /** Which resolved address becomes a [ResolvedPeer.host] — the one place a host is
  *  chosen, so every client's URL (clipboard, proximity, transfers) can carry it.
