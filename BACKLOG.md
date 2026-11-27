@@ -16,7 +16,9 @@ both apps' versions (the release contract).
 - The first two-digit minor: both updaters compare dotted versions number by number
   ("0.10" > "0.9" is a test on each side), so 0.9 sees 0.10 as newer.
 - **Update test, as users get it:**
-  - Mac: on the official 0.9 (self-updated 25/11) when 0.10 was published.
+  - Mac: on the official 0.9 (self-updated 25/11) when 0.10 was published. **✅ 27/11
+    14:25** — check forced (quit + kickstart 14:24:42), 0.10 in /Applications 66 s later,
+    one process, notarized, both extensions on, phone found.
   - S23: on a hand-installed build of the 0.10 code with versionCode 9. Its update path
     (`update/`, `BootReceiver`, `KeepAlive`) is unchanged since v0.9 (empty `git diff`),
     so its daily check runs the same 0.9 → 0.10 path users get. ⏭️ The first update in
