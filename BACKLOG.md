@@ -21,8 +21,19 @@ both apps' versions (the release contract).
     one process, notarized, both extensions on, phone found.
   - S23: on a hand-installed build of the 0.10 code with versionCode 9. Its update path
     (`update/`, `BootReceiver`, `KeepAlive`) is unchanged since v0.9 (empty `git diff`),
-    so its daily check runs the same 0.9 → 0.10 path users get. ⏭️ The first update in
-    which `KeepAlive` should bring the phone app back on its own — observe it.
+    so its daily check runs the same 0.9 → 0.10 path users get. **✅ 27/11 18:36:57** —
+    its daily check found 0.10; he confirmed the install. The app came back **on its own,
+    1.4 s later** (`killDueToPackageUpdate` 18:36:57.560 → process started 18:36:59.003
+    "for broadcast BootReceiver", i.e. MY_PACKAGE_REPLACED); nobody opened it for 45+ min.
+    The `KeepAlive` alarm was not needed this time — the 0.8 failure (that broadcast never
+    arriving) did not repeat.
+  - ⚠️ **Play Protect blocked 0.10 as "Harmful app blocked"** (a Potentially Harmful App
+    verdict, no reason given) where 0.7/0.8 only got "App scan recommended" — he chose
+    "Install anyway". 0.10 declares no new permission; VirusTotal: 0/63 for the exact APK
+    (uploaded 27/11 for the appeal, which Google's form requires). Appeal: Google's Play
+    Protect appeal form, filled 27/11 in his Chrome; sending it was his click (no reply is
+    promised). He kept 0.10 published: its users are friends who trust it. Watch whether
+    the next release gets the same verdict.
 
 ## ⏭️ 0.9 — any file from the Share menu; the phone comes back on its own (published 25/11/2026)
 
